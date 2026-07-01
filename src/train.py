@@ -27,7 +27,7 @@ import torch
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 
 from src import dist as D
-from src.config import load_config
+from src.config import expand_env, load_config
 from src.data.levircd import TiledLEVIRCD
 from src.losses import BceDiceLoss
 from src.metrics import prf1_iou
@@ -44,17 +44,6 @@ def _install_signal_handlers() -> None:
 
     for sig in (signal.SIGUSR1, signal.SIGTERM):
         signal.signal(sig, handler)
-
-
-def expand_env(obj: Any) -> Any:
-    """Recursively expand ``${VAR}`` in config strings (e.g. ``${WORK}``)."""
-    if isinstance(obj, str):
-        return os.path.expandvars(obj)
-    if isinstance(obj, dict):
-        return {k: expand_env(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [expand_env(v) for v in obj]
-    return obj
 
 
 def resolve_git_sha(repo_root: Path) -> str:

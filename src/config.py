@@ -7,6 +7,7 @@ module is usable (and unit-testable) even where PyYAML is not installed.
 
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -74,3 +75,14 @@ def load_config(path: str | Path, overrides: list[str] | None = None) -> dict[st
     if overrides:
         config = deep_merge(config, parse_overrides(overrides))
     return config
+
+
+def expand_env(obj: Any) -> Any:
+    """Recursively expand ``${VAR}`` in config strings (e.g. ``${WORK}``)."""
+    if isinstance(obj, str):
+        return os.path.expandvars(obj)
+    if isinstance(obj, dict):
+        return {k: expand_env(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [expand_env(v) for v in obj]
+    return obj
