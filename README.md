@@ -49,7 +49,6 @@ container/   changedet.def  (Singularity/Apptainer)
 experiments/ LOG.md         (job id · config · git sha · outcome)
 results/     metrics tables, PR curves, failure images (large binaries gitignored)
 app/         HF Space: Dockerfile · backend (FastAPI) · frontend (React+MapLibre)
-DECISIONS.md every assumption + resolved choice, dated
 ```
 
 ## Development
@@ -66,10 +65,10 @@ CI (GitHub Actions, Python 3.11) runs exactly this on every push.
 
 ## Training on Leonardo (HPC)
 
-Cluster specifics are resolved in [`DECISIONS.md`](DECISIONS.md) (account `your allocation`,
-partition `boost_usr_prod`, container SingularityPRO, torch cu121). Data and pretrained
-weights are pre-staged on the login node (compute nodes have **no internet egress**); training
-reads only local storage. Always run a **smoke config** before any full submission.
+Cluster-specific settings (allocation, partition, container image, torch build) are resolved
+from `leonardo.md` and kept in local project notes (not committed). Data and pretrained weights
+are pre-staged on the login node (compute nodes have **no internet egress**); training reads
+only local storage. Always run a **smoke config** before any full submission.
 
 ## Milestones
 

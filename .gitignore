@@ -30,3 +30,6 @@ app/frontend/node_modules/
 .env
 *.hf_token
 .DS_Store
+
+# Private cluster/allocation notes — keep local, never share (per user request)
+DECISIONS.md
