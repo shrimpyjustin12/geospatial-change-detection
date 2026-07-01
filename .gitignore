@@ -9,7 +9,8 @@ venv/
 .pytest_cache/
 
 # Data & artifacts (staged/generated; never committed — PRD §5.3)
-data/
+# NOTE: anchored to repo root so it does NOT match the source package src/data/.
+/data/
 results/*
 !results/.gitkeep
 checkpoints/
