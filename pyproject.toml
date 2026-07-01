@@ -76,7 +76,22 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "."
-packages = ["src"]          # check the src package (recurses subpackages) — consistent discovery
+# Enumerate files explicitly: mypy's directory recursion under Python 3.11 (CI) missed
+# src/data/*, so we list every module to guarantee identical discovery everywhere.
+files = [
+    "src/__init__.py",
+    "src/config.py",
+    "src/dist.py",
+    "src/losses.py",
+    "src/metrics.py",
+    "src/train.py",
+    "src/utils.py",
+    "src/data/__init__.py",
+    "src/data/tiling.py",
+    "src/data/levircd.py",
+    "src/models/__init__.py",
+    "src/models/fc_siam_diff.py",
+]
 disallow_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
