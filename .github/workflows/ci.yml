@@ -20,7 +20,11 @@ jobs:
         run: ruff check .
       - name: Ruff format check
         run: ruff format --check .
+      # mypy runs BEFORE torch is installed so torch.* stays "ignore_missing_imports"
+      # (matches local dev, where the ML stack lives on the cluster, not the dev box).
       - name: Mypy (typed src/)
         run: mypy
-      - name: Pytest (CPU smoke)
+      - name: Install torch (CPU) for model/loss/metric tests
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Pytest (CPU — includes model + loss tests)
         run: pytest -q
