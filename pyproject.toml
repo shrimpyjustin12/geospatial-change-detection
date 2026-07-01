@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.6",
+    "ruff==0.15.20",
     "mypy>=1.11",
     "pytest>=8.0",
     "types-PyYAML>=6.0",
@@ -66,6 +66,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "W"]
 [tool.ruff.lint.per-file-ignores]
 # tests use `pytest.importorskip(...)` before importing torch-dependent modules
 "tests/*" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]  # deterministic import grouping across ruff versions
 
 [tool.ruff.format]
 quote-style = "double"
