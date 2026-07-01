@@ -11,3 +11,5 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-01 | M1 | Unit tests (model/loss/metric) on CPU torch | — | tests/ | ffc3395 | 22 pass |
 | 2026-07-01 | M1 | CPU logic-smoke (serial partition) | srun | levircd_baseline_smoke | ffc3395 | loop/eval/ckpt OK |
 | 2026-07-01 | M1 | 4-GPU DDP smoke (boost_qos_dbg) | 48233882 | levircd_baseline_smoke | 5a80faf | COMPLETED 2:03; world=4 eff_batch=8 lr=4e-3; val+ckpt+TB OK |
+| 2026-07-01 | M1 | CI green (ruff+mypy+25 pytest); fixed .gitignore hiding src/data | Actions | — | d745ffa | success |
+| 2026-07-02 | M1 | Submit FULL baseline (4-GPU DDP, boost_usr_prod, 100 ep) | 48236696 | levircd_baseline.yaml | d745ffa | submitted |
