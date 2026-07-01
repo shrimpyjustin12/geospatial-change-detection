@@ -1,0 +1,1 @@
+# Keep results/ in version control; large binaries are gitignored (see .gitignore).

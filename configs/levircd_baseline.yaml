@@ -1,0 +1,44 @@
+# Track A · LEVIR-CD baseline — FC-Siam-diff (custom). Full training config.
+# Scaffolding for M1; some keys firm up when train.py lands. Env vars like ${WORK}
+# are expanded by train.py at load time.
+run_id: levircd_baseline
+seed: 1337
+
+data:
+  name: levircd
+  root: ${WORK}/sat-change-detection/data/levircd   # staged by scripts/stage_data.sh
+  tile_size: 256
+  num_workers: 8
+  bands: [R, G, B]
+
+model:
+  name: fc_siam_diff
+  fusion: diff            # diff | concat  — ablation knob (PRD §6, §8)
+  base_channels: 16
+  out_channels: 1         # single-channel change logits -> sigmoid
+
+loss:
+  type: bce_dice          # BCE + Dice for class imbalance (PRD §6.1 [ASSUMPTION])
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 100
+  batch_size: 16          # per-GPU; 4-GPU DDP -> effective 64 (session decision 2026-07-01)
+  lr: 0.001
+  weight_decay: 0.0001
+  optimizer: adamw
+  scheduler: cosine
+  amp: true               # bf16 on A100 (leonardo.md)
+  ddp: true               # 4-GPU DDP by default
+  grad_checkpointing: false
+  ckpt_every_min: 30      # leonardo.md: checkpoint every ~30 min
+  resume_if_exists: true
+
+eval:
+  threshold: 0.5          # PR curve selects the reported operating point (PRD §8)
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard    # PRD §4 [ASSUMPTION]
+  log_dir: ${WORK}/sat-change-detection/results

@@ -1,0 +1,45 @@
+# Track A · LEVIR-CD baseline — SMOKE config. A tiny end-to-end run to validate the
+# full pipeline before any full submission (PRD §7.2 "smoke before full"). Single-GPU,
+# runs on the debug QoS (boost_qos_dbg, 30-min cap).
+run_id: levircd_baseline_smoke
+seed: 1337
+
+data:
+  name: levircd
+  root: ${WORK}/sat-change-detection/data/levircd
+  tile_size: 256
+  num_workers: 2
+  bands: [R, G, B]
+  limit_batches: 2        # only a couple of batches
+  split_for_smoke: val
+
+model:
+  name: fc_siam_diff
+  fusion: diff
+  base_channels: 8
+  out_channels: 1
+
+loss:
+  type: bce_dice
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 1
+  max_steps: 4            # a handful of iterations, then exit cleanly
+  batch_size: 2
+  lr: 0.001
+  optimizer: adamw
+  scheduler: none
+  amp: true
+  ddp: false              # smoke is single-GPU
+  ckpt_every_min: 9999
+  resume_if_exists: false
+
+eval:
+  threshold: 0.5
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard
+  log_dir: ${WORK}/sat-change-detection/results

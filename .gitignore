@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Data & artifacts (staged/generated; never committed — PRD §5.3)
+data/
+results/*
+!results/.gitkeep
+checkpoints/
+logs/
+runs/
+wandb/
+*.onnx
+*.sif
+*.ckpt
+*.pth
+
+# Node / frontend
+node_modules/
+app/frontend/dist/
+app/frontend/node_modules/
+
+# Env / secrets (never commit tokens)
+.env
+*.hf_token
+.DS_Store
