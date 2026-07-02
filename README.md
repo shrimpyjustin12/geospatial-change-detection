@@ -4,7 +4,8 @@ Given two images of the same place at two times, produce a map of **what changed
 serve it through an interactive web demo. This is a portfolio project: the **evaluation
 harness and reproducibility are first-class deliverables**, not afterthoughts.
 
-> **Status:** M0 (setup) complete — CI green, LEVIR-CD staged. M1 (baseline on HPC) next.
+> **Status:** M1 complete — FC-Siam-diff baseline trains on 4×A100 (DDP), LEVIR-CD test
+> **F1 0.884 / IoU 0.793**. M2 (strong model + full eval harness) next.
 > See [milestones](#milestones). This README is the
 > front door and will grow with results tables, a failure gallery, and honest limitations
 > as milestones land (final polish in M7).
@@ -75,7 +76,7 @@ only local storage. Always run a **smoke config** before any full submission.
 | | Milestone | State |
 |---|---|---|
 | M0 | Setup: skeleton, CI, data staging, container draft | ✅ done |
-| M1 | Baseline (FC-Siam-diff) end-to-end on HPC | todo |
+| M1 | Baseline (FC-Siam-diff) end-to-end on HPC | ✅ done — LEVIR-CD test **F1 0.884** / IoU 0.793 |
 | M2 | Strong model (Siamese-SegFormer) + full eval harness | todo |
 | M3 | Foundation-model tier (DINOv2) + 3-model comparison | todo |
 | M4 | ONNX export + curated HF Space | todo |
