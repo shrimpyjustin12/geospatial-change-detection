@@ -31,4 +31,28 @@ def build_model(cfg: dict[str, Any]) -> Any:
             dropout=float(cfg.get("dropout", 0.1)),
             freeze_encoder=bool(cfg.get("freeze_encoder", False)),
         )
-    raise ValueError(f"unknown model '{name}' (supported: fc_siam_diff, siamese_segformer)")
+    if name == "dinov2_cd":
+        from src.models.dinov2_cd import DINOv2SiameseCD
+
+        return DINOv2SiameseCD(
+            model_name=str(cfg.get("encoder", "facebook/dinov2-base")),
+            in_ch=int(cfg.get("in_channels", 3)),
+            out_channels=int(cfg.get("out_channels", 1)),
+            fusion=str(cfg.get("fusion", "diff")),
+            image_size=int(cfg.get("image_size", 448)),
+            out_indices=cfg.get("out_indices"),
+            num_feature_layers=int(cfg.get("num_feature_layers", 4)),
+            decoder_dim=int(cfg.get("decoder_dim", 256)),
+            dropout=float(cfg.get("dropout", 0.1)),
+            pretrained=bool(cfg.get("pretrained", True)),
+            lora=bool(cfg.get("lora", True)),
+            lora_r=int(cfg.get("lora_r", 16)),
+            lora_alpha=int(cfg.get("lora_alpha", 32)),
+            lora_dropout=float(cfg.get("lora_dropout", 0.05)),
+            lora_targets=cfg.get("lora_targets", ("query", "key", "value", "dense")),
+            freeze_encoder=bool(cfg.get("freeze_encoder", True)),
+            grad_checkpointing=bool(cfg.get("grad_checkpointing", False)),
+        )
+    raise ValueError(
+        f"unknown model '{name}' (supported: fc_siam_diff, siamese_segformer, dinov2_cd)"
+    )

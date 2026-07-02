@@ -224,15 +224,21 @@ def main() -> None:
 
     if world_size > 1:
         model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank] if use_cuda else None
+            model,
+            device_ids=[local_rank] if use_cuda else None,
+            find_unused_parameters=bool(tcfg.get("ddp_find_unused_parameters", False)),
         )
 
     lossfn = BceDiceLoss(
         bce_weight=float(cfg["loss"].get("bce_weight", 1.0)),
         dice_weight=float(cfg["loss"].get("dice_weight", 1.0)),
     ).to(device)
+    # Optimize only params that require grad: identical to the full set for M1/M2 (nothing frozen),
+    # but for the FM tier this excludes the frozen DINOv2 backbone so AdamW only tracks the LoRA
+    # adapters + decoder (the trainable-param count the comparison table reports).
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=lr, weight_decay=float(tcfg.get("weight_decay", 0.0))
+        trainable_params, lr=lr, weight_decay=float(tcfg.get("weight_decay", 0.0))
     )
 
     epochs = int(tcfg.get("epochs", 1))

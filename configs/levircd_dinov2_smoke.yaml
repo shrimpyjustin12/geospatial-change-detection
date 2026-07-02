@@ -1,0 +1,62 @@
+# Track A · LEVIR-CD DINOv2 FM tier — SMOKE config. Tiny end-to-end run to validate the full
+# pipeline (offline ViT load, LoRA injection, DDP, ckpt, eval) before any full submission
+# (PRD §7.2 "smoke before full"). Uses dinov2-small @ 224 so a debug-QoS / CPU smoke is fast.
+run_id: levircd_dinov2_smoke
+seed: 1337
+
+data:
+  name: levircd
+  root: ${WORK}/sat-change-detection/data/levircd
+  tile_size: 256
+  num_workers: 2
+  bands: [R, G, B]
+  limit_batches: 2
+  split_for_smoke: val
+
+model:
+  name: dinov2_cd
+  encoder: facebook/dinov2-small   # ViT-S/14 (~21M); staged to the HF cache
+  pretrained: true
+  image_size: 224                  # 16x16 patch grid; small + fast
+  num_feature_layers: 4
+  fusion: diff
+  decoder_dim: 128
+  dropout: 0.1
+  in_channels: 3
+  out_channels: 1
+  lora: true
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  lora_targets: [query, key, value, dense]
+  freeze_encoder: true
+  grad_checkpointing: false
+
+loss:
+  type: bce_dice
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 1
+  max_steps: 4            # a handful of iterations, then exit cleanly
+  batch_size: 2
+  lr: 0.0001
+  lr_reference_batch: 2
+  weight_decay: 0.01
+  optimizer: adamw
+  scheduler: none
+  amp: true
+  ddp: false              # smoke is single-GPU
+  ddp_find_unused_parameters: false
+  grad_checkpointing: false
+  ckpt_every_min: 9999
+  resume_if_exists: false
+
+eval:
+  threshold: 0.5
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard
+  log_dir: ${WORK}/sat-change-detection/results

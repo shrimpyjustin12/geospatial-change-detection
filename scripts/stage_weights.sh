@@ -34,4 +34,39 @@ for name in TARGETS:
 print(f"[stage_weights] HF_HOME={os.environ.get('HF_HOME')}")
 PY
 
-log "done. M3 will add facebook/dinov2-* (confirm gating at that time, record in DECISIONS.md)."
+# DINOv2 foundation-model encoders (M3, PRD §6.1). facebook/dinov2-{small,base} are UNGATED (no
+# license click) at time of writing. Unlike smp, transformers' from_pretrained HONORS
+# HF_HUB_OFFLINE and ERRORS on a cache miss (no silent network fallback) -- so the offline risk is
+# a missing/incomplete snapshot, not the smp silent-fallback trap. We stage the exact 'main' commit
+# (recorded below) and then verify an offline load in a fresh process so a cache miss fails HERE
+# (login node, egress) rather than on a no-egress GPU node.
+DINOV2_MODELS="${DINOV2_MODELS:-facebook/dinov2-small facebook/dinov2-base}"
+log "staging DINOv2: $DINOV2_MODELS"
+python - "$DINOV2_MODELS" <<'PY'
+import sys
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+for repo in sys.argv[1].split():
+    path = snapshot_download(repo_id=repo, revision="main")
+    commit = Path(path).name  # .../snapshots/<commit_sha>
+    print(f"[stage_weights] cached {repo}@{commit} -> {path}")
+PY
+
+# offline-load verification: no network, cache-only. Success == the snapshot is complete.
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python - "$DINOV2_MODELS" <<'PY'
+import sys
+from transformers import Dinov2Model
+
+for repo in sys.argv[1].split():
+    m = Dinov2Model.from_pretrained(repo)
+    n = sum(p.numel() for p in m.parameters()) / 1e6
+    c = m.config
+    print(
+        f"[stage_weights] OFFLINE load OK {repo}: {n:.1f}M params, "
+        f"hidden={c.hidden_size} layers={c.num_hidden_layers} patch={c.patch_size}"
+    )
+print("[stage_weights] DINOv2 offline verification passed (no network fallback)")
+PY
+
+log "done. Record the staged DINOv2 commits in DECISIONS.md (re-run if transformers is upgraded)."

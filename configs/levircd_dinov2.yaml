@@ -1,0 +1,63 @@
+# Track A · LEVIR-CD foundation-model tier — DINOv2 + LoRA (custom). Full training config (PRD §6.1).
+# Weight-shared, FROZEN facebook/dinov2-base ViT-B/14 encoder adapted with LoRA (peft), multi-layer
+# change decoder. Answers "does FM pretraining beat an ImageNet backbone, at what trainable-param
+# cost?" — trainable = LoRA adapters + decoder (~few M) vs the SegFormer strong model's 24.7M.
+# Env vars (${WORK}) are expanded by train.py.
+run_id: levircd_dinov2
+seed: 1337
+
+data:
+  name: levircd
+  root: ${WORK}/sat-change-detection/data/levircd   # staged by scripts/stage_data.sh
+  tile_size: 256          # data tiles; the model resizes each date to image_size for the encoder
+  num_workers: 8
+  bands: [R, G, B]
+
+model:
+  name: dinov2_cd
+  encoder: facebook/dinov2-base   # ViT-B/14, ~86M frozen; weights staged to the HF cache (offline)
+  pretrained: true                # False -> random init (offline-safe, used by tests)
+  image_size: 448                 # 32x32 patch grid (mult. of 14); finer than 256/14 for small changes
+  num_feature_layers: 4           # 4 evenly-spaced hidden states (ends at the last layer)
+  fusion: diff                    # diff | concat  — fusion ablation knob (PRD §8)
+  decoder_dim: 256
+  dropout: 0.1
+  in_channels: 3
+  out_channels: 1                 # single-channel change logits -> sigmoid
+  # --- adaptation: LoRA (default). lora:false + freeze_encoder:true -> linear-probe;
+  #     lora:false + freeze_encoder:false -> full fine-tune.
+  lora: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_targets: [query, key, value, dense]   # attention q/k/v + output projection
+  freeze_encoder: true
+  grad_checkpointing: true        # recompute ViT activations in backward (fits ViT-B@448 on A100-64)
+
+loss:
+  type: bce_dice          # BCE + Dice for class imbalance (PRD §6.1)
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 200
+  batch_size: 8           # per-GPU; 4-GPU DDP -> effective 32
+  lr: 0.0001              # base; linearly scaled x(eff/ref) -> 4e-4 at 4 GPUs (LoRA+decoder AdamW)
+  lr_reference_batch: 8
+  weight_decay: 0.01
+  optimizer: adamw
+  scheduler: cosine
+  amp: true               # bf16 on A100 (leonardo.md)
+  ddp: true               # 4-GPU DDP by default
+  ddp_find_unused_parameters: false   # all LoRA/decoder params are used (out_indices ends at last layer)
+  grad_checkpointing: true
+  ckpt_every_min: 30      # leonardo.md: checkpoint every ~30 min
+  resume_if_exists: true
+
+eval:
+  threshold: 0.5          # harness selects the operating point on val via a PR curve (PRD §8)
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard    # PRD §4
+  log_dir: ${WORK}/sat-change-detection/results

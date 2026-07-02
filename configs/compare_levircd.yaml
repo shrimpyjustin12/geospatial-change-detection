@@ -1,5 +1,5 @@
 # Track-A tier comparison on the identical LEVIR-CD test split via the identical harness (PRD §8).
-# Headline artifact. DINOv2 (FM tier) is appended in M3.
+# Headline artifact: baseline (ImageNet-free) vs strong (ImageNet MiT) vs FM (DINOv2 + LoRA).
 #   python -m src.compare --manifest configs/compare_levircd.yaml
 title: "LEVIR-CD — Track A model comparison"
 split: test
@@ -14,3 +14,5 @@ models:
   - name: "Siamese-SegFormer / MiT-b2 (concat)"
     config: configs/levircd_segformer.yaml
     set: ["run_id=levircd_segformer_concat", "model.fusion=concat"]
+  - name: "DINOv2-base + LoRA (diff) — FM tier"
+    config: configs/levircd_dinov2.yaml

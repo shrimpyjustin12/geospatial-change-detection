@@ -21,6 +21,21 @@ def warmup_factor(step: int, warmup_steps: int) -> float:
     return min(1.0, (step + 1) / warmup_steps)
 
 
+def even_feature_layers(num_layers: int, k: int) -> list[int]:
+    """``k`` evenly-spaced transformer hidden-state indices ending at the last layer.
+
+    ``transformers`` hidden states have length ``num_layers + 1`` (index 0 is the embedding output,
+    ``i`` the output of layer ``i``). Used by the DINOv2 FM tier to tap a pseudo-multi-scale set of
+    ViT layers. Ending the schedule at ``num_layers`` guarantees every layer is upstream of a *read*
+    output, so no LoRA/decoder parameter is left unused (which would otherwise trip DDP without
+    ``find_unused_parameters``).
+    """
+    k = max(1, min(k, num_layers))
+    idx = {min(num_layers, max(1, round(num_layers * (j + 1) / k))) for j in range(k)}
+    idx.add(num_layers)
+    return sorted(idx)
+
+
 def set_determinism(seed: int) -> None:
     """Seed python / numpy / torch. Called on every rank BEFORE model init (leonardo.md)."""
     import random
