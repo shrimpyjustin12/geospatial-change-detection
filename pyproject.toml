@@ -41,6 +41,7 @@ train = [
     "numpy>=1.26,<2.1",
     "tensorboard>=2.16",
     "safetensors>=0.4",
+    "matplotlib>=3.8",
 ]
 serve = [
     "fastapi>=0.111",
@@ -102,6 +103,7 @@ module = [
     "planetary_computer.*",
     "tensorboard.*",
     "safetensors.*",
+    "matplotlib.*",
 ]
 ignore_missing_imports = true
 

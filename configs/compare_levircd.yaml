@@ -1,0 +1,13 @@
+# Track-A tier comparison on the identical LEVIR-CD test split via the identical harness (PRD §8).
+# Headline artifact. DINOv2 (FM tier) is appended in M3.
+#   python -m src.compare --manifest configs/compare_levircd.yaml
+title: "LEVIR-CD — Track A model comparison"
+split: test
+select_split: val
+out_dir: ${WORK}/sat-change-detection/results/comparison
+
+models:
+  - name: "FC-Siam-diff (baseline)"
+    config: configs/levircd_baseline.yaml
+  - name: "Siamese-SegFormer / MiT-b2 (strong)"
+    config: configs/levircd_segformer.yaml

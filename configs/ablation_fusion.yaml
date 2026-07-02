@@ -1,0 +1,14 @@
+# Ablation (PRD §8): difference vs concatenation fusion for the strong model, same encoder /
+# schedule / split. Requires both runs trained (concat via `model.fusion=concat`, its own run_id).
+#   python -m src.compare --manifest configs/ablation_fusion.yaml
+title: "LEVIR-CD — Siamese-SegFormer fusion ablation (diff vs concat)"
+split: test
+select_split: val
+out_dir: ${WORK}/sat-change-detection/results/ablation_fusion
+
+models:
+  - name: "SegFormer — difference fusion"
+    config: configs/levircd_segformer.yaml
+  - name: "SegFormer — concat fusion"
+    config: configs/levircd_segformer.yaml
+    set: ["run_id=levircd_segformer_concat", "model.fusion=concat"]

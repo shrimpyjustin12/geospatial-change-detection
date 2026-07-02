@@ -15,3 +15,8 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-02 | M1 | Submit FULL baseline (4-GPU DDP, boost_usr_prod, 100 ep) | 48236696 | levircd_baseline.yaml | d745ffa | submitted |
 | 2026-07-02 | M1 | FULL baseline COMPLETED (55 min, no requeue) | 48236696 | levircd_baseline.yaml | d745ffa | val F1=0.877, best=0.887 |
 | 2026-07-02 | M1 | Test eval (change class, thr=0.5) | srun serial | eval --split test | af46744 | P=0.920 R=0.851 **F1=0.884** IoU=0.793 |
+| 2026-07-02 | M2 | Stage smp MiT-b0/b2 ImageNet weights (login node, pinned revs) | — | stage_weights.sh | 489c647 | offline load OK, fell_back=False |
+| 2026-07-02 | M2 | Validation job: CPU segformer smoke + baseline harness eval | 48269993 | serial | 489c647 | COMPLETED; smoke OK |
+| 2026-07-02 | M2 | Full eval harness on M1 baseline (val-selected thr) | 48269993 | evaluate levircd_baseline | 489c647 | thr=0.148 **F1=0.886** IoU=0.796 AP=0.932; per-scene 0.734±0.314 |
+| 2026-07-02 | M2 | Real-stack pytest (torch+smp) | — | tests/ | 489c647 | 28 passed |
+| 2026-07-02 | M2 | 4-GPU DDP SegFormer smoke (boost_qos_dbg) | 48271942 | levircd_segformer_smoke | 489c647 | COMPLETED 2:40; world=4 lr=1.6e-4; val+ckpt OK |
