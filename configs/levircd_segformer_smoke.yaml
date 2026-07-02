@@ -1,0 +1,51 @@
+# Track A · LEVIR-CD Siamese-SegFormer — SMOKE config. Tiny end-to-end run to validate the full
+# pipeline (encoder load, DDP, ckpt, eval) before any full submission (PRD §7.2 "smoke before
+# full"). Uses mit_b0 (small) so a debug-QoS / CPU smoke is fast.
+run_id: levircd_segformer_smoke
+seed: 1337
+
+data:
+  name: levircd
+  root: ${WORK}/sat-change-detection/data/levircd
+  tile_size: 256
+  num_workers: 2
+  bands: [R, G, B]
+  limit_batches: 2
+  split_for_smoke: val
+
+model:
+  name: siamese_segformer
+  encoder: mit_b0         # smallest MiT; staged weight smp-hub/mit_b0.imagenet
+  pretrained: true
+  fusion: diff
+  decoder_dim: 128
+  dropout: 0.1
+  in_channels: 3
+  out_channels: 1
+
+loss:
+  type: bce_dice
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 1
+  max_steps: 4            # a handful of iterations, then exit cleanly
+  batch_size: 2
+  lr: 0.00004
+  lr_reference_batch: 2
+  weight_decay: 0.01
+  optimizer: adamw
+  scheduler: none
+  amp: true
+  ddp: false              # smoke is single-GPU
+  ckpt_every_min: 9999
+  resume_if_exists: false
+
+eval:
+  threshold: 0.5
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard
+  log_dir: ${WORK}/sat-change-detection/results

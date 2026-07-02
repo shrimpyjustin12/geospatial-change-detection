@@ -1,0 +1,49 @@
+# Track A · LEVIR-CD strong model — Siamese-SegFormer (custom). Full training config (PRD §6.1).
+# Weight-shared MiT-b2 encoder (ImageNet-pretrained via smp), difference fusion, all-MLP decoder.
+# Target: LEVIR-CD change-class F1 ~= 0.90. Env vars (${WORK}) are expanded by train.py.
+run_id: levircd_segformer
+seed: 1337
+
+data:
+  name: levircd
+  root: ${WORK}/sat-change-detection/data/levircd   # staged by scripts/stage_data.sh
+  tile_size: 256
+  num_workers: 8
+  bands: [R, G, B]
+
+model:
+  name: siamese_segformer
+  encoder: mit_b2         # smp MiT-b2 (ImageNet). smoke uses mit_b0. Weights staged to HF cache.
+  pretrained: true        # False -> random init (offline-safe, used by tests)
+  fusion: diff            # diff | concat  — fusion ablation knob (PRD §8)
+  decoder_dim: 256
+  dropout: 0.1
+  in_channels: 3
+  out_channels: 1         # single-channel change logits -> sigmoid
+
+loss:
+  type: bce_dice          # BCE + Dice for class imbalance (PRD §6.1)
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 200
+  batch_size: 8           # per-GPU; 4-GPU DDP -> effective 32
+  lr: 0.00004             # base; linearly scaled x(eff/ref) -> ~1.6e-4 at 4 GPUs (AdamW recipe)
+  lr_reference_batch: 8
+  weight_decay: 0.01
+  optimizer: adamw
+  scheduler: cosine
+  amp: true               # bf16 on A100 (leonardo.md)
+  ddp: true               # 4-GPU DDP by default
+  grad_checkpointing: false
+  ckpt_every_min: 30      # leonardo.md: checkpoint every ~30 min
+  resume_if_exists: true
+
+eval:
+  threshold: 0.5          # harness selects the operating point on val via a PR curve (PRD §8)
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard    # PRD §4
+  log_dir: ${WORK}/sat-change-detection/results

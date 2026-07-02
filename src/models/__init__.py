@@ -17,4 +17,18 @@ def build_model(cfg: dict[str, Any]) -> Any:
             out_channels=int(cfg.get("out_channels", 1)),
             fusion=str(cfg.get("fusion", "diff")),
         )
-    raise ValueError(f"unknown model '{name}' (M1 supports: fc_siam_diff)")
+    if name == "siamese_segformer":
+        from src.models.siamese_segformer import SiameseSegFormer
+
+        return SiameseSegFormer(
+            encoder_name=str(cfg.get("encoder", "mit_b2")),
+            in_ch=int(cfg.get("in_channels", 3)),
+            out_channels=int(cfg.get("out_channels", 1)),
+            fusion=str(cfg.get("fusion", "diff")),
+            decoder_dim=int(cfg.get("decoder_dim", 256)),
+            pretrained=bool(cfg.get("pretrained", True)),
+            encoder_weights=str(cfg.get("encoder_weights", "imagenet")),
+            dropout=float(cfg.get("dropout", 0.1)),
+            freeze_encoder=bool(cfg.get("freeze_encoder", False)),
+        )
+    raise ValueError(f"unknown model '{name}' (supported: fc_siam_diff, siamese_segformer)")

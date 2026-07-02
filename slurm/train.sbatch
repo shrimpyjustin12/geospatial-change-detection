@@ -21,6 +21,7 @@ mkdir -p logs
 module load python/3.11.7
 source .venv-train/bin/activate
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONUNBUFFERED=1
+export HF_HOME="$WORK/sat-change-detection/.cache/huggingface"   # staged MiT/FM weights (offline)
 export GIT_SHA="$(cat REVISION 2>/dev/null || echo unknown)"
 
 # DDP rendezvous (single node)
