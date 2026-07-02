@@ -1,7 +1,10 @@
 #!/bin/bash
 # Full 4-GPU DDP training on Leonardo Booster (one rank per GPU; billed per node, so use all 4).
-# The allocation is supplied at submit time so it never lives in the repo:
+# The allocation is supplied at submit time so it never lives in the repo. Extra args after the
+# config are forwarded to src.train (e.g. --set for the fusion ablation):
 #   sbatch --account=<ALLOCATION> slurm/train.sbatch [configs/levircd_baseline.yaml]
+#   sbatch --account=<ALLOCATION> slurm/train.sbatch configs/levircd_segformer.yaml \
+#          --set run_id=levircd_segformer_concat model.fusion=concat
 #SBATCH --job-name=cd-train
 #SBATCH --partition=boost_usr_prod
 #SBATCH --nodes=1
@@ -33,5 +36,5 @@ export MASTER_PORT=$(( 20000 + SLURM_JOB_ID % 20000 ))
 _on_usr1() { echo "[sbatch] USR1 received; requeuing job $SLURM_JOB_ID"; scontrol requeue "$SLURM_JOB_ID"; }
 trap _on_usr1 USR1
 
-srun python -m src.train --config "$CONFIG" --resume-if-exists &
+srun python -m src.train --config "$CONFIG" --resume-if-exists "${@:2}" &
 wait $!
