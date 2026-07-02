@@ -24,12 +24,15 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-02 | M2 | FULL SegFormer concat (4-GPU DDP, 200 ep) COMPLETED 2:00 | 48276351 | levircd_segformer.yaml --set fusion=concat | dd0971d | val best F1=0.9084 |
 | 2026-07-02 | M2 | Harness eval both strong models + tier/ablation tables | 48293204 | evaluate + compare | 9bbedf4 | diff **F1=0.9106** IoU=0.836 AP=0.943; concat F1=0.9066 IoU=0.829 |
 | 2026-07-02 | M2 | Tier comparison (test, thr-on-val): baseline vs diff vs concat | 48293204 | compare_levircd.yaml | 9bbedf4 | 0.886 / **0.911** / 0.907 F1 — M2 target met |
-| 2026-07-02 | M3 | Install transformers 4.57.6 + peft 0.19.1 in .venv-train (login node) | — | pip | PENDING_SHA | torch untouched; numpy→2.0.2, hub→0.36.2 |
-| 2026-07-02 | M3 | Stage DINOv2 small/base (pinned commits) + offline-load verify | — | stage_weights.sh | PENDING_SHA | ungated; 22.1M/86.6M; no net fallback |
-| 2026-07-02 | M3 | Real-stack pytest (torch+transformers+peft+smp) | 48315172 | tests/ | PENDING_SHA | 54 passed |
-| 2026-07-02 | M3 | CPU logic smoke (dinov2-small, offline FM load) | 48315458 | levircd_dinov2_smoke | PENDING_SHA | loop/eval/ckpt OK |
-| 2026-07-02 | M3 | 4-GPU DDP smoke (dinov2-small, LoRA) | 48315460 | levircd_dinov2_smoke | PENDING_SHA | COMPLETED; world=4 lr=4e-4 |
-| 2026-07-02 | M3 | Single-GPU mem/speed probe (dinov2-base@448) | srun | levircd_dinov2.yaml | PENDING_SHA | 89.4M/**2.82M** trainable; 1.0GB/64; 74ms/step |
-| 2026-07-02 | M3 | Capped 4-GPU DDP full-config run — DDP+reentrant-ckpt unused-param error | 48316121 | levircd_dinov2 max_steps=15 | PENDING_SHA | FAILED → fix use_reentrant=False |
-| 2026-07-02 | M3 | Capped 4-GPU DDP full-config run (use_reentrant=False) | 48316662 | levircd_dinov2 max_steps=15 | PENDING_SHA | COMPLETED 2:40; val F1=0.587@15steps |
-| 2026-07-02 | M3 | FULL DINOv2 submission — **PAUSED for human go-ahead** | — | levircd_dinov2.yaml | PENDING_SHA | awaiting approval |
+| 2026-07-02 | M3 | Install transformers 4.57.6 + peft 0.19.1 in .venv-train (login node) | — | pip | bdadabc | torch untouched; numpy→2.0.2, hub→0.36.2 |
+| 2026-07-02 | M3 | Stage DINOv2 small/base (pinned commits) + offline-load verify | — | stage_weights.sh | bdadabc | ungated; 22.1M/86.6M; no net fallback |
+| 2026-07-02 | M3 | Real-stack pytest (torch+transformers+peft+smp) | 48315172 | tests/ | bdadabc | 54 passed |
+| 2026-07-02 | M3 | CPU logic smoke (dinov2-small, offline FM load) | 48315458 | levircd_dinov2_smoke | bdadabc | loop/eval/ckpt OK |
+| 2026-07-02 | M3 | 4-GPU DDP smoke (dinov2-small, LoRA) | 48315460 | levircd_dinov2_smoke | bdadabc | COMPLETED; world=4 lr=4e-4 |
+| 2026-07-02 | M3 | Single-GPU mem/speed probe (dinov2-base@448) | srun | levircd_dinov2.yaml | bdadabc | 89.4M/**2.82M** trainable; 1.0GB/64; 74ms/step |
+| 2026-07-02 | M3 | Capped 4-GPU DDP full-config run — DDP+reentrant-ckpt unused-param error | 48316121 | levircd_dinov2 max_steps=15 | bdadabc | FAILED → fix use_reentrant=False |
+| 2026-07-02 | M3 | Capped 4-GPU DDP full-config run (use_reentrant=False) | 48316662 | levircd_dinov2 max_steps=15 | bdadabc | COMPLETED 2:40; val F1=0.587@15steps |
+| 2026-07-02 | M3 | Go-ahead received: launch LoRA + frozen linear-probe ablation (reviewer) | — | — | bdadabc | approved |
+| 2026-07-02 | M3 | Frozen-probe capped 4-GPU DDP smoke (lora=false + grad-ckpt) | 48318779 | levircd_dinov2 --set model.lora=false max_steps=15 | bdadabc | COMPLETED 2:36; DDP OK |
+| 2026-07-02 | M3 | Submit FULL DINOv2-base + LoRA (diff, 4-GPU DDP, 200 ep) | 48318927 | levircd_dinov2.yaml | bdadabc | submitted |
+| 2026-07-02 | M3 | Submit FULL DINOv2-base FROZEN linear-probe (ablation, 4-GPU DDP, 200 ep) | 48318928 | levircd_dinov2 --set model.lora=false run_id=levircd_dinov2_frozen | bdadabc | submitted |
