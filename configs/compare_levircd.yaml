@@ -9,5 +9,8 @@ out_dir: ${WORK}/sat-change-detection/results/comparison
 models:
   - name: "FC-Siam-diff (baseline)"
     config: configs/levircd_baseline.yaml
-  - name: "Siamese-SegFormer / MiT-b2 (strong)"
+  - name: "Siamese-SegFormer / MiT-b2 (diff)"
     config: configs/levircd_segformer.yaml
+  - name: "Siamese-SegFormer / MiT-b2 (concat)"
+    config: configs/levircd_segformer.yaml
+    set: ["run_id=levircd_segformer_concat", "model.fusion=concat"]

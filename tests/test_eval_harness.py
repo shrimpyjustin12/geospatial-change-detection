@@ -59,7 +59,11 @@ def test_summarize_per_scene_mean_std():
 
 
 def test_classify_failure_buckets():
-    assert classify_failure({"boundary_error_ratio": 0.8}) == "registration_misalignment"
+    # registration needs a real (mislocated) prediction, not a blank tile
+    assert (
+        classify_failure({"boundary_error_ratio": 0.8, "pred_pos_frac": 0.05})
+        == "registration_misalignment"
+    )
     assert classify_failure({"bright_frac": 0.5}) == "cloud_shadow"
     assert classify_failure({"dark_frac": 0.5}) == "cloud_shadow"
     assert (
@@ -69,9 +73,16 @@ def test_classify_failure_buckets():
     assert classify_failure({"gt_pos_frac": 0.4}) == "other"
 
 
+def test_classify_failure_blank_prediction_is_not_registration():
+    # a small GT change the model missed entirely (blank prediction) -> small_subtle, NOT
+    # registration, even though the tiny GT blob is mostly its own boundary
+    stats = {"boundary_error_ratio": 0.95, "pred_pos_frac": 0.0, "gt_pos_frac": 0.003}
+    assert classify_failure(stats) == "small_subtle"
+
+
 def test_classify_failure_priority_boundary_wins():
-    # boundary is checked first even when brightness would also trigger
-    stats = {"boundary_error_ratio": 0.9, "bright_frac": 0.9}
+    # boundary is checked first even when brightness would also trigger (given a real prediction)
+    stats = {"boundary_error_ratio": 0.9, "bright_frac": 0.9, "pred_pos_frac": 0.05}
     assert classify_failure(stats) == "registration_misalignment"
 
 

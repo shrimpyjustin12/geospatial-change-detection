@@ -75,6 +75,7 @@ def _tile_stats(
     dark = ((lum_a < 0.1) | (lum_b < 0.1)).float().mean()
     return {
         "gt_pos_frac": float(gt.float().mean()),
+        "pred_pos_frac": float(pred.float().mean()),
         "img_absdiff_mean": float((a - b).abs().mean()),
         "bright_frac": float(bright),
         "dark_frac": float(dark),

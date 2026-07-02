@@ -21,6 +21,7 @@ _EXTREME_FRAC = 0.30  # >=30% near-saturated or near-black pixels -> cloud / sha
 _ABSDIFF_HIGH = 0.30  # large global before/after intensity gap -> seasonal / illumination
 _MODERATE_GT_FRAC = 0.05
 _BOUNDARY_HIGH = 0.55  # >=55% of error pixels hug the GT boundary -> registration misalignment
+_MIN_PRED_FRAC = 0.001  # a "misalignment" needs a real (mislocated) prediction, not a blank tile
 
 CAUSE_BUCKETS = (
     "registration_misalignment",
@@ -128,13 +129,18 @@ def classify_failure(stats: dict[str, float]) -> str:
     """Tag a worst-case tile with a likely failure cause (PRD §8 gallery buckets).
 
     ``stats`` keys (all in [0, 1] over the tile):
-      ``gt_pos_frac`` fraction of GT change pixels; ``img_absdiff_mean`` mean |A-B| over RGB;
-      ``bright_frac`` / ``dark_frac`` near-saturated / near-black pixel fraction;
-      ``boundary_error_ratio`` share of error pixels within a few px of the GT boundary.
-    Checked most-specific first; falls through to ``other``.
+      ``gt_pos_frac`` / ``pred_pos_frac`` fraction of GT / predicted change pixels;
+      ``img_absdiff_mean`` mean |A-B| over RGB; ``bright_frac`` / ``dark_frac`` near-saturated /
+      near-black pixel fraction; ``boundary_error_ratio`` share of error pixels within a few px of
+      the GT boundary. Checked most-specific first; falls through to ``other``.
     """
     gt = stats.get("gt_pos_frac", 0.0)
-    if stats.get("boundary_error_ratio", 0.0) >= _BOUNDARY_HIGH:
+    # registration = a prediction exists but is spatially offset (errors hug the GT boundary). A
+    # (near-)blank prediction is a *miss*, not a misalignment, so it must not claim this bucket.
+    if (
+        stats.get("pred_pos_frac", 0.0) >= _MIN_PRED_FRAC
+        and stats.get("boundary_error_ratio", 0.0) >= _BOUNDARY_HIGH
+    ):
         return "registration_misalignment"
     if (
         stats.get("bright_frac", 0.0) >= _EXTREME_FRAC
