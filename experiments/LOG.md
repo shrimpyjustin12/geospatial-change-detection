@@ -20,3 +20,5 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-02 | M2 | Full eval harness on M1 baseline (val-selected thr) | 48269993 | evaluate levircd_baseline | 489c647 | thr=0.148 **F1=0.886** IoU=0.796 AP=0.932; per-scene 0.734±0.314 |
 | 2026-07-02 | M2 | Real-stack pytest (torch+smp) | — | tests/ | 489c647 | 28 passed |
 | 2026-07-02 | M2 | 4-GPU DDP SegFormer smoke (boost_qos_dbg) | 48271942 | levircd_segformer_smoke | 489c647 | COMPLETED 2:40; world=4 lr=1.6e-4; val+ckpt OK |
+| 2026-07-02 | M2 | Submit FULL SegFormer (diff fusion, 4-GPU DDP, 200 ep) | 48276349 | levircd_segformer.yaml | dd0971d | submitted (pending) |
+| 2026-07-02 | M2 | Submit FULL SegFormer (concat fusion ablation, 4-GPU DDP) | 48276351 | levircd_segformer.yaml --set fusion=concat | dd0971d | submitted (pending) |
