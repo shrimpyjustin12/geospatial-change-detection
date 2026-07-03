@@ -52,6 +52,7 @@ def build_model(cfg: dict[str, Any]) -> Any:
             lora_targets=cfg.get("lora_targets", ("query", "key", "value", "dense")),
             freeze_encoder=bool(cfg.get("freeze_encoder", True)),
             grad_checkpointing=bool(cfg.get("grad_checkpointing", False)),
+            encoder_config=cfg.get("encoder_config"),
         )
     raise ValueError(
         f"unknown model '{name}' (supported: fc_siam_diff, siamese_segformer, dinov2_cd)"

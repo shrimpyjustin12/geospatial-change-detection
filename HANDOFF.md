@@ -46,7 +46,15 @@ dir) is authoritative for all Leonardo/HPC specifics.
   **Honest limitation (keep prominent):** per-scene LoRA mean **0.767**, std **~0.31**, **min 0.00** —
   the FM lifts the mean but does NOT tighten variance or fix the hardest small/subtle tiles (10/12
   worst tiles `small_subtle`; 11/12 for frozen). Artifacts in `docs/results/` (dinov2_lora_*).
-- **M4 — next.** ONNX export + PyTorch↔ONNX parity + curated HF Space (scope below).
+- **M4 — export + parity + local Space are DONE and verified on real weights; only the HF push/deploy
+  remains, gated on the user's HF org name.** `src/export.py` (ONNX export + parity + artifact bundle)
+  done; parity **verified on the real trained checkpoints** — SegFormer `mit_b2` max |Δlogit|
+  **2.29e-5**, DINOv2+LoRA (fixed 448) **8.01e-5** (tol 1e-3) — see "M4 status" below. Curated HF
+  Space **built and verified locally, end-to-end**, on the real bundles + real LEVIR-CD test crops:
+  DINOv2 detects real building change at the val-selected threshold 0.508 (31% predicted vs ~30% GT
+  on a test crop); no-change control 0%. **Only open (deploy-side, DO NOT do until the user hands over
+  the org name):** HF org/username → push bundles to a Model repo + create the Space; local
+  `docker build` (Docker not installed on the dev Mac).
 
 ## Environment facts — do NOT rediscover the hard way
 - **Do NOT build a Singularity/Apptainer container on Leonardo.** It fails twice (login-node SIGKILL
@@ -150,8 +158,68 @@ Defer live-AOI (Track-B/OSCD) to M5.
   Model repo at build/startup) — a different surface with different networking rules. The offline guards
   are a Leonardo concern, not an HF-Space one.
 
-**First steps:** (1) implement `src/export.py` + a parity test, exercised on the SegFormer *and*
-DINOv2 checkpoints; (2) get the HF org/username from the user; (3) build the curated Space.
+### M4 status (what's done)
+- **`src/export.py`** — CLI `python -m src.export --config <cfg> [--checkpoint <best.pt>] [--random-init]`.
+  Builds the model on CPU, exports to ONNX (opset 17), **asserts PyTorch↔ONNXRuntime parity** on a
+  fixed sample (max abs logit diff ≤ `--tol` 1e-3, else RuntimeError → no bundle), and writes the
+  bundle: `model.onnx`, `config.yaml`, `preprocessing.json`, `metrics_card.md`, `parity.json`.
+  **DINOv2 export = fixed `image_size` grid (static H/W, only batch dynamic)** so the 448 resize +
+  `interpolate_pos_encoding` bake in as constants; **CNN tiers = dynamic batch + H/W**. The parity
+  pass also re-runs ORT on a second shape to prove the declared dynamic axes actually hold.
+- **`tests/test_export.py`** — parity for all three tiers on tiny random-init models (CI-safe:
+  `importorskip` onnx/onnxruntime/transformers/peft). The DINOv2 case forces a native pos-grid ≠
+  export grid so `interpolate_pos_encoding` truly interpolates — the exact silent-misbehavior trap.
+- **Verified locally** (Python 3.12 CPU venv pinned to the training stack: torch 2.5.1, transformers
+  4.57.6, peft 0.19.1, smp 0.5.0): SegFormer `mit_b2` max |Δlogit| **6.3e-7** (dynamic H/W); DINOv2
+  native-518→448 max |Δlogit| **8.1e-8** (fixed 448). Parity is a graph property (independent of the
+  trained weight values), so this proves the export machinery; **re-run on the real `best.pt` for the
+  shippable bundle** (see blockers).
+- **`build_model` gained an `encoder_config` passthrough** (dinov2 only) so a random-init encoder can
+  be given a custom native grid — purely additive.
+- **Curated Space (`app/`)** — multi-stage `Dockerfile` (node build → py3.11 runtime, uvicorn :7860),
+  FastAPI (`backend/app.py`: `/api/health|models|models/{id}/card|curated|curated/{id}/{which}.png|predict`,
+  serves the built SPA), CPU-onnxruntime inference (`backend/inference.py`, consumes a bundle dir via
+  `BUNDLES_DIR`; startup pull from `HF_BUNDLE_REPO` for the Space), React+Vite+MapLibre frontend
+  (`frontend/`: two view-synced maps + draggable swipe divider, change overlay, opacity, stats,
+  model-card page with the real 4-tier results). **The change overlay is an aligned HTML `<img>`
+  over the maps, NOT a MapLibre raster layer** — a second stacked image-source raster proved
+  unreliable to paint (add-after-idle never repaints); an HTML element positioned via `map.project()`
+  always renders and gives smooth CSS opacity. Base imagery IS a MapLibre raster image layer.
+- **Verified in-browser** (chrome-devtools): frontend `npm run build` compiles, uvicorn serves the
+  build + API, both bundles predict (DINOv2 448 ~200 ms, SegFormer 256 ~750 ms on CPU), swipe +
+  overlay + opacity + pair/model switching + model-card all work. Demo runs on **synthetic placeholder
+  pairs** (`backend/gen_sample_pairs.py`) + **random-init bundles** (a banner says so); both are
+  gitignored (regenerate the pairs with the script; bundles come from HF / re-export).
+
+### M4 done locally — reproduce the real bundles + demo data
+The real artifacts live **only on the dev machine** (gitignored — bundles pull from HF at deploy,
+LEVIR imagery is not redistributed per PRD §5.3). To regenerate after `scp`-ing the checkpoints
+(under `$WORK/.../results/<run_id>/checkpoints/best.pt`) to a local path:
+```
+python -m src.export --config configs/levircd_segformer.yaml --checkpoint <seg best.pt> --out-dir bundles
+python -m src.export --config configs/levircd_dinov2.yaml   --checkpoint <dv2 best.pt> --out-dir bundles
+cp -r bundles/* app/backend/models/                       # the Space's BUNDLES_DIR
+# curated pairs: drop real LEVIR test A/B tiles into app/backend/data/curated (256px before/after +
+# a manifest.json), or use gen_sample_pairs.py for synthetic placeholders.
+```
+(Locally: Python 3.12 CPU venv pinned to the training stack; `Dinov2Model.from_pretrained` /smp
+download the *architecture* over the internet, then the checkpoint overwrites the weights.)
+
+### Remaining M4 steps (deploy-side — need the user)
+1. **HF org/username** (still a placeholder) → create the Model repo (push bundles; set
+   `HF_BUNDLE_REPO` on the Space to pull them) + create the Docker Space.
+2. **Docker** is not installed on the dev Mac, so `docker build app/` wasn't run — the Dockerfile is
+   authored and the frontend build + backend serve were verified outside Docker. Install Docker for a
+   full local container build, or let HF build it at deploy.
+3. **Do NOT push bundles or deploy the Space until the user hands over the HF org name** (standing
+   convention + explicit hold — the user is waiting on the client and on approval to showcase publicly
+   under their name). Stay paused here.
+4. **HF free-tier performance plan (do at deploy time):** real DINOv2-base on CPU is ~4 s/tile
+   (SegFormer ~1 s). The curated pairs + models are fixed, so **precompute every (pair, model)
+   prediction at build time and bake the overlay-PNG + stats into the bundle/cache** (e.g. a
+   `curated_predictions.json` the backend loads at startup, or warm `_predict_cache` in a startup
+   hook) → the public Space serves curated results **instantly** with no CPU inference. Keep live
+   inference for the M5 live-AOI path. Optionally add ONNX INT8 quantization for the Track-B model.
 
 ## Working conventions
 - **Smoke before full** (CPU serial or `boost_qos_dbg`). **PAUSE and ask the user before the first
