@@ -36,3 +36,7 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-02 | M3 | Frozen-probe capped 4-GPU DDP smoke (lora=false + grad-ckpt) | 48318779 | levircd_dinov2 --set model.lora=false max_steps=15 | bdadabc | COMPLETED 2:36; DDP OK |
 | 2026-07-02 | M3 | Submit FULL DINOv2-base + LoRA (diff, 4-GPU DDP, 200 ep) | 48318927 | levircd_dinov2.yaml | bdadabc | submitted |
 | 2026-07-02 | M3 | Submit FULL DINOv2-base FROZEN linear-probe (ablation, 4-GPU DDP, 200 ep) | 48318928 | levircd_dinov2 --set model.lora=false run_id=levircd_dinov2_frozen | bdadabc | submitted |
+| 2026-07-03 | M3 | FULL DINOv2 + LoRA COMPLETED (2:50, no requeue, 200 ep) | 48318927 | levircd_dinov2.yaml | bdadabc | val best F1=0.9166 |
+| 2026-07-03 | M3 | FULL DINOv2 frozen linear-probe COMPLETED (1:56, 200 ep) | 48318928 | levircd_dinov2_frozen | bdadabc | val best F1=0.8961 |
+| 2026-07-03 | M3 | 4-tier comparison eval (test, thr-on-val→test) | 48333943 | compare_levircd.yaml | bdadabc | LoRA **F1=0.9125** IoU=0.839 AP=0.946; frozen 0.889/0.800/0.924 |
+| 2026-07-03 | M3 | Tier table: baseline / SF-diff / DINOv2-frozen / DINOv2-LoRA | 48333943 | compare_levircd.yaml | bdadabc | 0.886 / 0.911 / 0.889 / **0.913** F1 — FM wins at **2.82M vs 24.72M** trainable |

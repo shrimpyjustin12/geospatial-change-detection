@@ -14,5 +14,8 @@ models:
   - name: "Siamese-SegFormer / MiT-b2 (concat)"
     config: configs/levircd_segformer.yaml
     set: ["run_id=levircd_segformer_concat", "model.fusion=concat"]
+  - name: "DINOv2-base frozen linear-probe (diff) — FM features only"
+    config: configs/levircd_dinov2.yaml
+    set: ["run_id=levircd_dinov2_frozen", "model.lora=false"]
   - name: "DINOv2-base + LoRA (diff) — FM tier"
     config: configs/levircd_dinov2.yaml

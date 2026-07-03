@@ -4,11 +4,13 @@ Given two images of the same place at two times, produce a map of **what changed
 serve it through an interactive web demo. This is a portfolio project: the **evaluation
 harness and reproducibility are first-class deliverables**, not afterthoughts.
 
-> **Status:** M2 complete — a **Siamese-SegFormer** (ImageNet-pretrained MiT-b2) reaches LEVIR-CD
-> test **F1 0.911 / IoU 0.836** (baseline 0.886), evaluated through a full harness with PR-curve
-> threshold selection, per-scene breakdown, an auto-generated failure gallery, and a fusion
-> ablation. See [Results](#results--levir-cd-track-a) and [milestones](#milestones).
-> Next: M3 (DINOv2 foundation-model tier + 3-way comparison).
+> **Status:** M3 complete — a **DINOv2-base + LoRA** foundation-model tier reaches LEVIR-CD test
+> **F1 0.913 / IoU 0.839** with only **2.82M trainable params**, beating the 24.7M-param
+> Siamese-SegFormer (F1 0.911): foundation-model pretraining wins at **~1/9 the trainable-parameter
+> cost**. Full four-tier comparison through the identical harness — PR-curve threshold selection,
+> per-scene breakdown, auto-generated failure gallery, and fusion + adaptation ablations.
+> See [Results](#results--levir-cd-track-a) and [milestones](#milestones).
+> Next: M4 (ONNX export + curated HF Space).
 
 ## Two imagery tracks (they must not be mixed)
 
@@ -19,19 +21,23 @@ harness and reproducibility are first-class deliverables**, not afterthoughts.
 
 ## Results — LEVIR-CD (Track A)
 
-Three models on the **identical LEVIR-CD test split** through the **identical harness**. The
+Four model tiers on the **identical LEVIR-CD test split** through the **identical harness**. The
 operating threshold is chosen on the validation split (max-F1) and then applied to test — never
 tuned on test. Metrics are for the **change class only**; overall pixel accuracy is ~99% for a
 trivial "predict no change" model and is deliberately not reported.
 
-| Model | Trainable params | Threshold | Precision | Recall | F1 | IoU |
-|---|---|---|---|---|---|---|
-| FC-Siam-diff (baseline) | 0.83M | 0.168 | 0.899 | 0.874 | **0.886** | 0.796 |
-| Siamese-SegFormer / MiT-b2 (diff) | 24.72M | 0.480 | 0.917 | 0.905 | **0.911** | 0.836 |
-| Siamese-SegFormer / MiT-b2 (concat) | 24.98M | 0.527 | 0.912 | 0.901 | **0.907** | 0.829 |
+| Model | Trainable params | Threshold | Precision | Recall | F1 | IoU | AP |
+|---|---|---|---|---|---|---|---|
+| FC-Siam-diff (baseline) | 0.83M | 0.168 | 0.899 | 0.874 | **0.886** | 0.796 | 0.932 |
+| Siamese-SegFormer / MiT-b2 (diff) | 24.72M | 0.480 | 0.917 | 0.905 | **0.911** | 0.836 | 0.943 |
+| Siamese-SegFormer / MiT-b2 (concat) | 24.98M | 0.527 | 0.912 | 0.901 | **0.907** | 0.829 | 0.939 |
+| DINOv2-base frozen linear-probe | 1.64M | 0.469 | 0.900 | 0.878 | **0.889** | 0.800 | 0.924 |
+| **DINOv2-base + LoRA** (FM tier) | **2.82M** | 0.508 | 0.924 | 0.901 | **0.913** | 0.839 | 0.946 |
 
-The ImageNet-pretrained MiT-b2 encoder lifts test F1 from 0.886 → **0.911** (average precision
-0.943), in line with published LEVIR-CD SegFormer-class results.
+Two pretrained encoders beat the from-scratch baseline (0.886): the ImageNet MiT-b2 (0.911) and the
+self-supervised **DINOv2-base + LoRA (0.913)** — the best model overall, and the answer to the
+[foundation-model question](#foundation-model-tier--does-pretraining-beat-an-imagenet-backbone-and-at-what-cost)
+below.
 
 **Fusion ablation (difference vs concatenation)** — same encoder, schedule, LR, epochs and seed;
 only the fusion changes. Difference fusion wins by ~0.4 F1 / 0.7 IoU, consistent with the
@@ -42,28 +48,59 @@ FC-Siam-diff intuition that the change signal lives in the *difference* of the t
 | difference \|a−b\| | **0.9106** | 0.8358 | 0.917 | 0.905 |
 | concatenation [a,b] | 0.9066 | 0.8292 | 0.912 | 0.901 |
 
+### Foundation-model tier — does pretraining beat an ImageNet backbone, and at what cost?
+
+The DINOv2 tier uses a **frozen**, self-supervised ViT-B/14 (`facebook/dinov2-base`) as a
+weight-shared Siamese encoder feeding a multi-layer change decoder, adapted two ways. This is a
+clean single-variable ablation — identical image size, schedule, LR, epochs and seed; only the
+adaptation changes:
+
+| Adaptation | Trainable params | F1 | IoU | AP |
+|---|---|---|---|---|
+| frozen linear-probe (decoder only) | 1.64M | 0.889 | 0.800 | 0.924 |
+| + LoRA (r=16 on attention q/k/v/proj) | **2.82M** | **0.913** | **0.839** | **0.946** |
+
+Two things fall out:
+
+- **Frozen DINOv2 features already match a purpose-built CD baseline.** With *no* encoder training —
+  just a decoder over frozen features — the probe reaches **0.889 F1**, edging the FC-Siam-diff
+  baseline (0.886). The self-supervised representation already encodes most of what change detection
+  needs; only 1.64M decoder params are trained.
+- **LoRA supplies the decisive adaptation.** Adding **1.18M** LoRA params lifts F1 by **+0.024**
+  (0.889 → 0.913), IoU **+0.039**, and AP **+0.022** — enough to pass the 24.72M-param SegFormer. The
+  win comes from *both* strong pretrained features *and* lightweight task adaptation, not either alone.
+
+**Bottom line:** foundation-model pretraining beats the ImageNet backbone on every metric
+(F1 0.913 vs 0.911, IoU 0.839 vs 0.836, AP 0.946 vs 0.943) while training **~9× fewer parameters**
+(2.82M vs 24.72M). Like SegFormer and unlike the baseline (0.168), the FM is well-calibrated — its
+optimal threshold (0.508) sits at ~0.5.
+
+![DINOv2 + LoRA change-class PR curve](docs/results/dinov2_lora_pr_curve.png)
+
 **Per-scene variance (honest caveat)** — metrics per test scene (n=128), mean±std:
 
 | Model | per-scene F1 | min | max |
 |---|---|---|---|
 | baseline | 0.734 ± 0.314 | 0.00 | 0.97 |
 | SegFormer (diff) | 0.761 ± 0.315 | 0.00 | 0.98 |
-| SegFormer (concat) | 0.764 ± 0.306 | 0.00 | 0.98 |
+| DINOv2 frozen-probe | 0.743 ± 0.307 | 0.00 | 0.96 |
+| DINOv2 + LoRA | 0.767 ± 0.312 | 0.00 | 0.98 |
 
-The strong model lifts the per-scene **mean** (0.734 → 0.761) but does **not tighten the spread**
-(std ≈ 0.31, min 0.00 for all three). The gain is a roughly uniform lift, not a fix for the hardest
-scenes. The aggregate F1 gain (0.886 → 0.911) exceeds the per-scene-mean gain because the aggregate
-is pixel-weighted — dominated by large-change scenes — while the per-scene mean weights every scene
-equally, including the many test scenes with only a tiny change where the model still struggles.
+DINOv2 + LoRA posts the **highest per-scene mean (0.767)** — but the spread is unchanged (std ≈ 0.31,
+min 0.00 for every tier). Better pretraining lifts the mean; it does **not** tighten the variance or
+rescue the hardest scenes. As in M2, the aggregate F1 (pixel-weighted, dominated by large-change
+scenes) gains more than the per-scene mean (which weights every scene equally, including the many
+tiny-change scenes where all models still struggle).
 
-**Failure gallery (auto-generated).** The 12 worst change tiles are all **small/subtle changes the
-model misses entirely** (blank prediction), which the harness tags by cause bucket:
+**Failure gallery (auto-generated).** Across *every* tier the worst change tiles are the same:
+**small/subtle changes missed entirely** (blank prediction). For DINOv2 + LoRA, 10 of the 12 worst
+tiles are tagged `small_subtle` by the harness (11/12 for the frozen probe); the SegFormer shows the
+identical pattern. Foundation-model pretraining does **not** solve this failure mode.
 
-![LEVIR-CD change-class PR curve](docs/results/segformer_diff_pr_curve.png)
-![Failure-case gallery](docs/results/segformer_diff_failure_gallery.png)
+![Failure-case gallery — DINOv2 + LoRA](docs/results/dinov2_lora_failure_gallery.png)
 
-Reproduce with `python -m src.evaluate --config configs/levircd_segformer.yaml --split test`
-and `python -m src.compare --manifest configs/compare_levircd.yaml`.
+Reproduce the full comparison with `python -m src.compare --manifest configs/compare_levircd.yaml`
+(per-model artifacts via `python -m src.evaluate --config configs/levircd_dinov2.yaml --split test`).
 
 **Why the split matters (domain gap):** a model trained on 0.5 m aerial imagery does **not**
 transfer to 10 m Sentinel-2 — resolution and spectral characteristics differ by more than an
@@ -126,7 +163,7 @@ only local storage. Always run a **smoke config** before any full submission.
 | M0 | Setup: skeleton, CI, data staging, container draft | ✅ done |
 | M1 | Baseline (FC-Siam-diff) end-to-end on HPC | ✅ done — LEVIR-CD test **F1 0.884** / IoU 0.793 |
 | M2 | Strong model (Siamese-SegFormer) + full eval harness | ✅ done — LEVIR-CD test **F1 0.911** / IoU 0.836 |
-| M3 | Foundation-model tier (DINOv2) + 3-model comparison | todo |
+| M3 | Foundation-model tier (DINOv2 + LoRA) + 4-tier comparison | ✅ done — LEVIR-CD test **F1 0.913** / IoU 0.839, **2.82M** trainable |
 | M4 | ONNX export + curated HF Space | todo |
 | M5 | Live Sentinel-2 AOI mode | todo |
 | M6 | Disaster xBD multi-class track | todo |
