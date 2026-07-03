@@ -36,11 +36,16 @@ dir) is authoritative for all Leonardo/HPC specifics.
   | DINOv2-base frozen linear-probe | 1.64M | 0.889 | 0.800 | 0.924 |
   | **DINOv2-base + LoRA** (headline FM tier) | **2.82M** | **0.913** | **0.839** | **0.946** |
 
-  **FM pretraining beats the ImageNet backbone at ~1/9 the trainable-param cost** (2.82M vs 24.72M).
-  Frozen features alone (1.64M, decoder-only) ≈ the baseline → the self-supervised representation
-  already carries most of the change signal; the frozen→LoRA delta (+0.024 F1) is the adaptation lift.
-  Per-scene: LoRA 0.767±0.312 (highest mean) but std ~0.31, min 0.00 — FM lifts the mean, does NOT fix
-  the hardest scenes (10/12 worst tiles `small_subtle`). Artifacts in `docs/results/` (dinov2_lora_*).
+  **Headline = parameter efficiency (the defensible claim), NOT an accuracy win.** DINOv2+LoRA
+  matches-to-slightly-beats the specialist SegFormer (F1 0.913 vs 0.911 is **within noise**; IoU 0.839
+  vs 0.836; AP 0.946 vs 0.943) at **~9× fewer trainable params** (2.82M vs 24.72M). Frame it as
+  parity-plus-efficiency; do not oversell the fractional F1 lead. The causal story (frozen-probe
+  ablation): frozen features alone (1.64M, decoder-only) ≈ the baseline (0.889 vs 0.886) → the
+  self-supervised representation already carries most of the change signal; the frozen→LoRA delta
+  (+0.024 F1) is the adaptation lift — the win comes from *both*, not either alone.
+  **Honest limitation (keep prominent):** per-scene LoRA mean **0.767**, std **~0.31**, **min 0.00** —
+  the FM lifts the mean but does NOT tighten variance or fix the hardest small/subtle tiles (10/12
+  worst tiles `small_subtle`; 11/12 for frozen). Artifacts in `docs/results/` (dinov2_lora_*).
 - **M4 — next.** ONNX export + PyTorch↔ONNX parity + curated HF Space (scope below).
 
 ## Environment facts — do NOT rediscover the hard way
@@ -120,23 +125,38 @@ dir) is authoritative for all Leonardo/HPC specifics.
   `scripts/stage_weights.sh` stages smp MiT weights at pinned revisions (extend for DINOv2).
 
 ## M4 — scope + first steps
-ONNX export + curated HF Space. **Export (`src/export.py`, PRD §9):** export each Track-A model to
-ONNX (fixed opset; dynamic batch/H/W where feasible); **assert PyTorch↔ONNXRuntime parity** (max abs
-diff below tol, else fail the export); emit the per-model artifact bundle — `model.onnx`, `config.yaml`,
-`preprocessing.json` (norm stats, input size, band order, tiling), `metrics_card.md`; push bundles to a
-companion HF Model repo. **Space (PRD §10):** Docker HF Space, FastAPI (uvicorn :7860) serving a
-React+MapLibre static build; **/curated** before/after mode (swipe slider, overlay opacity, stats
-panel) on LEVIR-CD test pairs, CPU `onnxruntime`. **First steps:** (1) implement `src/export.py` +
-a parity test on the SegFormer and/or DINOv2 checkpoints; (2) confirm the HF org/repo names with the
-human (NEEDS CONFIRMATION — see DECISIONS "Open items"); (3) build the curated Space (defer live-AOI to
-M5). **DINOv2 export caveat:** the model resizes inputs to `image_size=448` internally and uses
-`interpolate_pos_encoding=True` — verify ONNX traces the resize/pos-embed-interpolation path at a fixed
-448 grid (or bake the 448 resize into `preprocessing.json` and export a fixed-size graph). SegFormer/
-baseline are fully-convolutional and export cleanly with dynamic H/W.
+ONNX export + PyTorch↔ONNX parity check + **curated** HF Space. **Export (`src/export.py`, PRD §9):**
+export each Track-A model to ONNX (fixed opset; dynamic batch/H/W where feasible); **assert
+PyTorch↔ONNXRuntime parity** (max abs diff below tol, else FAIL the export); emit the per-model
+artifact bundle — `model.onnx`, `config.yaml`, `preprocessing.json` (norm stats, input size, band
+order, tiling), `metrics_card.md`. Push the bundles to an **HF Model repo**; the Space pulls from
+there at build/startup (keeps the Space lean, separates weights from app). **Space (PRD §10):** Docker
+HF Space, FastAPI (uvicorn :7860) serving a React+MapLibre static build; **/curated** before/after mode
+— swipe slider, change-mask overlay + opacity, stats panel — on LEVIR-CD test pairs, CPU `onnxruntime`.
+Defer live-AOI (Track-B/OSCD) to M5.
+
+- **\*\*\* M4 NEEDS THE USER'S HF ORG/USERNAME: `[FILL IN ONCE USER PROVIDES]`** — the Model repo (weight
+  bundles) and the Space both live there. Ask before pushing bundles or creating the Space; it is a
+  NEEDS-CONFIRMATION item in DECISIONS "Open items". Do not invent a name.
+- **KNOWN CAVEAT — DINOv2 ONNX (verify parity SPECIFICALLY on the DINOv2 model, not just the CNN
+  tiers):** `dinov2_cd` resizes inputs to `image_size=448` internally and uses
+  `interpolate_pos_encoding=True`. If the 448 resize + pos-embed interpolation are not baked into the
+  traced graph correctly, the exported model **silently misbehaves** (wrong output, no error). Export
+  at a **fixed 448 grid** (bake the resize into `preprocessing.json`) and assert PyTorch↔ONNX parity on
+  a real LEVIR-CD pair for the DINOv2 checkpoint. FC-Siam-diff and SegFormer are fully-convolutional and
+  export cleanly with dynamic H/W — DINOv2 is the risky one.
+- **Surface note:** M0–M3 train on **Leonardo** (compute nodes have **no egress** → weights pre-staged).
+  M4's Space **deploys on Hugging Face**, which **does** have egress (it pulls the bundle from the HF
+  Model repo at build/startup) — a different surface with different networking rules. The offline guards
+  are a Leonardo concern, not an HF-Space one.
+
+**First steps:** (1) implement `src/export.py` + a parity test, exercised on the SegFormer *and*
+DINOv2 checkpoints; (2) get the HF org/username from the user; (3) build the curated Space.
 
 ## Working conventions
 - **Smoke before full** (CPU serial or `boost_qos_dbg`). **PAUSE and ask the user before the first
-  full multi-GPU submission.**
+  full multi-GPU submission — and (M4+) before deploying/making public the HF Space or pushing weight
+  bundles to a public HF Model repo** (outward-facing, hard to reverse).
 - Checkpoint every ~30 min + `--resume-if-exists` so a walltime cut never loses progress.
 - Commit granularly (user identity, no Claude attribution); keep `DECISIONS.md` + `experiments/LOG.md`
   current; confirm CI is green after each push.

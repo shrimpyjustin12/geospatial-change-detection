@@ -5,10 +5,12 @@ serve it through an interactive web demo. This is a portfolio project: the **eva
 harness and reproducibility are first-class deliverables**, not afterthoughts.
 
 > **Status:** M3 complete — a **DINOv2-base + LoRA** foundation-model tier reaches LEVIR-CD test
-> **F1 0.913 / IoU 0.839** with only **2.82M trainable params**, beating the 24.7M-param
-> Siamese-SegFormer (F1 0.911): foundation-model pretraining wins at **~1/9 the trainable-parameter
-> cost**. Full four-tier comparison through the identical harness — PR-curve threshold selection,
-> per-scene breakdown, auto-generated failure gallery, and fusion + adaptation ablations.
+> **F1 0.913 / IoU 0.839** with only **2.82M trainable params**, matching (to slightly beating) the
+> 24.7M-param Siamese-SegFormer (F1 0.911). The defensible headline is **parameter efficiency**:
+> foundation-model pretraining delivers specialist-level accuracy at **~9× fewer trainable
+> parameters** — 0.913 vs 0.911 is within noise, so this is parity-plus-efficiency, not a decisive
+> accuracy win. Full four-tier comparison through the identical harness — PR-curve threshold
+> selection, per-scene breakdown, auto-generated failure gallery, and fusion + adaptation ablations.
 > See [Results](#results--levir-cd-track-a) and [milestones](#milestones).
 > Next: M4 (ONNX export + curated HF Space).
 
@@ -34,8 +36,9 @@ trivial "predict no change" model and is deliberately not reported.
 | DINOv2-base frozen linear-probe | 1.64M | 0.469 | 0.900 | 0.878 | **0.889** | 0.800 | 0.924 |
 | **DINOv2-base + LoRA** (FM tier) | **2.82M** | 0.508 | 0.924 | 0.901 | **0.913** | 0.839 | 0.946 |
 
-Two pretrained encoders beat the from-scratch baseline (0.886): the ImageNet MiT-b2 (0.911) and the
-self-supervised **DINOv2-base + LoRA (0.913)** — the best model overall, and the answer to the
+Both pretrained encoders clear the from-scratch baseline (0.886) and land together at the top — the
+ImageNet MiT-b2 (0.911) and the self-supervised **DINOv2-base + LoRA (0.913)**, a statistical tie on
+accuracy (within noise). What separates them is **trainable cost** — 2.82M vs 24.72M — the
 [foundation-model question](#foundation-model-tier--does-pretraining-beat-an-imagenet-backbone-and-at-what-cost)
 below.
 
@@ -67,13 +70,16 @@ Two things fall out:
   baseline (0.886). The self-supervised representation already encodes most of what change detection
   needs; only 1.64M decoder params are trained.
 - **LoRA supplies the decisive adaptation.** Adding **1.18M** LoRA params lifts F1 by **+0.024**
-  (0.889 → 0.913), IoU **+0.039**, and AP **+0.022** — enough to pass the 24.72M-param SegFormer. The
-  win comes from *both* strong pretrained features *and* lightweight task adaptation, not either alone.
+  (0.889 → 0.913), IoU **+0.039**, and AP **+0.022** — enough to reach parity with the 24.72M-param
+  SegFormer. The lift comes from *both* strong pretrained features *and* lightweight task adaptation,
+  not either alone.
 
-**Bottom line:** foundation-model pretraining beats the ImageNet backbone on every metric
-(F1 0.913 vs 0.911, IoU 0.839 vs 0.836, AP 0.946 vs 0.943) while training **~9× fewer parameters**
-(2.82M vs 24.72M). Like SegFormer and unlike the baseline (0.168), the FM is well-calibrated — its
-optimal threshold (0.508) sits at ~0.5.
+**Bottom line — parity plus efficiency.** DINOv2 + LoRA matches, to slightly beats, the specialist
+SegFormer on accuracy (F1 0.913 vs 0.911 — **within noise**; IoU 0.839 vs 0.836; AP 0.946 vs 0.943)
+while training **~9× fewer parameters** (2.82M vs 24.72M). The robust, defensible claim is the
+**parameter efficiency**, not the fractional F1 lead: foundation-model pretraining reaches
+specialist-level accuracy at a fraction of the trainable cost. Like SegFormer and unlike the baseline
+(0.168), the FM is well-calibrated — its optimal threshold (0.508) sits at ~0.5.
 
 ![DINOv2 + LoRA change-class PR curve](docs/results/dinov2_lora_pr_curve.png)
 
