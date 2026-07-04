@@ -20,7 +20,9 @@ Config via env:
 
 from __future__ import annotations
 
+import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -59,9 +61,68 @@ def _maybe_pull_bundles() -> None:
 _maybe_pull_bundles()
 models = BundleRegistry(BUNDLES_DIR)
 curated = CuratedRegistry(CURATED_DIR)
-# curated pairs + models are fixed, so predictions are deterministic — cache them so switching back
-# to a scene is instant (real DINOv2-base is ~seconds per tile on CPU).
 _predict_cache: dict[tuple[str, str], dict[str, Any]] = {}
+# Curated pairs + models are fixed, so predictions are deterministic. tile+stitch inference is a few
+# seconds of CPU per scene (DINOv2), so we bake predictions to disk (the deploy plan): the file is
+# loaded instantly at startup and any gaps are filled by a background prewarm.
+_CACHE_FILE = CURATED_DIR / "_predictions.json"
+
+
+def _load_prediction_cache() -> None:
+    if not _CACHE_FILE.exists():
+        return
+    try:
+        data = json.loads(_CACHE_FILE.read_text())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cache] could not read {_CACHE_FILE}: {exc}")
+        return
+    valid = set(curated.pairs)
+    for key, result in data.items():
+        pair_id, _, model_id = key.partition("||")
+        if pair_id in valid and model_id in models.ids():
+            _predict_cache[(pair_id, model_id)] = result
+
+
+def _save_prediction_cache() -> None:
+    try:
+        data = {f"{p}||{m}": r for (p, m), r in _predict_cache.items()}
+        _CACHE_FILE.write_text(json.dumps(data))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cache] could not write {_CACHE_FILE}: {exc}")
+
+
+def _compute_prediction(pair_id: str, model_id: str) -> dict[str, Any]:
+    """Cached tile+stitch prediction for a (pair, model) — populated on demand and by prewarm."""
+    key = (pair_id, model_id)
+    cached = _predict_cache.get(key)
+    if cached is not None:
+        return cached
+    before, after = curated.get_pair(pair_id)
+    result = models.predict(model_id, before, after)
+    result.update({"pair_id": pair_id, "model_id": model_id})
+    _predict_cache[key] = result
+    return result
+
+
+def _prewarm() -> None:
+    """Fill any (pair, model) predictions missing from the on-disk cache, then persist them so the
+    next startup is instant. On-demand requests still work while this runs."""
+    changed = False
+    for pair_id in list(curated.pairs):
+        for model_id in models.ids():
+            if (pair_id, model_id) in _predict_cache:
+                continue
+            try:
+                _compute_prediction(pair_id, model_id)
+                changed = True
+            except Exception as exc:  # noqa: BLE001 — best-effort warm; on-demand path still serves
+                print(f"[prewarm] {pair_id}/{model_id} failed: {exc}")
+    if changed:
+        _save_prediction_cache()
+
+
+_load_prediction_cache()
+threading.Thread(target=_prewarm, daemon=True).start()
 
 app = FastAPI(title="Satellite Change Detection — curated demo", version="1.0")
 app.add_middleware(
@@ -118,17 +179,9 @@ def curated_image(pair_id: str, which: str) -> FileResponse:
 def predict(req: PredictRequest) -> dict[str, Any]:
     if req.model_id not in models.ids():
         raise HTTPException(404, f"unknown model {req.model_id!r}")
-    key = (req.pair_id, req.model_id)
-    if key in _predict_cache:
-        return _predict_cache[key]
-    try:
-        before, after = curated.get_pair(req.pair_id)
-    except KeyError as exc:
-        raise HTTPException(404, f"unknown pair {req.pair_id!r}") from exc
-    result = models.predict(req.model_id, before, after)
-    result.update({"pair_id": req.pair_id, "model_id": req.model_id})
-    _predict_cache[key] = result
-    return result
+    if req.pair_id not in curated.pairs:
+        raise HTTPException(404, f"unknown pair {req.pair_id!r}")
+    return _compute_prediction(req.pair_id, req.model_id)
 
 
 # --- static frontend (mounted LAST so the /api/* routes above take precedence) ---------------

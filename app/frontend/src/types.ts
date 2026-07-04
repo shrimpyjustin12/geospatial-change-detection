@@ -35,4 +35,5 @@ export interface PredictResult {
   input_size: number;
   pair_id: string;
   model_id: string;
+  n_tiles?: number;
 }

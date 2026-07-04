@@ -6,7 +6,7 @@ dir) is authoritative for all Leonardo/HPC specifics.
 
 - **Project:** a satellite **change-detection** system (high-res aerial + Sentinel-2) with a
   first-class evaluation harness and a deployed web demo. Full spec: **[PRD.md](PRD.md)**.
-- **GitHub:** https://github.com/shrimpyjustin12/geospatial-change-detection (branch `main`).
+- **Repo:** GitHub, branch `main` (exact URL + owner in the local, gitignored `DECISIONS.md`).
 - **Local, gitignored notes:** `DECISIONS.md` (resolved cluster placeholders + every decision) and
   `experiments/LOG.md` (run trail). Keep both current. Injected memory also carries key facts.
 
@@ -46,15 +46,18 @@ dir) is authoritative for all Leonardo/HPC specifics.
   **Honest limitation (keep prominent):** per-scene LoRA mean **0.767**, std **~0.31**, **min 0.00** —
   the FM lifts the mean but does NOT tighten variance or fix the hardest small/subtle tiles (10/12
   worst tiles `small_subtle`; 11/12 for frozen). Artifacts in `docs/results/` (dinov2_lora_*).
-- **M4 — export + parity + local Space are DONE and verified on real weights; only the HF push/deploy
-  remains, gated on the user's HF org name.** `src/export.py` (ONNX export + parity + artifact bundle)
-  done; parity **verified on the real trained checkpoints** — SegFormer `mit_b2` max |Δlogit|
-  **2.29e-5**, DINOv2+LoRA (fixed 448) **8.01e-5** (tol 1e-3) — see "M4 status" below. Curated HF
-  Space **built and verified locally, end-to-end**, on the real bundles + real LEVIR-CD test crops:
-  DINOv2 detects real building change at the val-selected threshold 0.508 (31% predicted vs ~30% GT
-  on a test crop); no-change control 0%. **Only open (deploy-side, DO NOT do until the user hands over
-  the org name):** HF org/username → push bundles to a Model repo + create the Space; local
-  `docker build` (Docker not installed on the dev Mac).
+- **M4 — export + parity + curated Space are DONE and verified on real weights; only the HF push/deploy
+  remains, and it is now UNBLOCKED (an HF org is available — see "Deploy" below).** `src/export.py`
+  (ONNX export + parity + artifact bundle) done; parity **verified on the real trained checkpoints** —
+  SegFormer `mit_b2` max |Δlogit| **2.29e-5**, DINOv2+LoRA (fixed 448) **8.01e-5** (tol 1e-3). The
+  curated Space is **built and verified locally, end-to-end**, on the real bundles + real LEVIR-CD test
+  tiles, with a polished dark **"Observatory Console"** theme: **native-1024 before/after imagery** with
+  **tile-stitch masks** (the scene is split into 256px native tiles, each inferred, the mask stitched —
+  the bundle's documented `tiling.tile_size`; same model/threshold/metric as the eval harness, since
+  feeding the whole 1024 tile at once collapses to ~0% change), a **full-bleed cover-fit** map layout,
+  and the **change mask stays pixel-aligned to the imagery through zoom/pan/resize**. Full-scene
+  predictions match the GT change fraction (e.g. test_45 25.8% vs 25% annotated; stable control 1.3% vs
+  1.5%). See "M4 status" and "Deploy" below.
 
 ## Environment facts — do NOT rediscover the hard way
 - **Do NOT build a Singularity/Apptainer container on Leonardo.** It fails twice (login-node SIGKILL
@@ -99,9 +102,10 @@ dir) is authoritative for all Leonardo/HPC specifics.
   cause-bucketed failure gallery.
 - **Flat `{A,B,label}/{split}*.png` layout is authoritative** over PRD §5.4's nested sketch (it is
   what torchgeo's `LEVIRCD` expects).
-- **Commits use the user's identity (umaraslam66, no Claude attribution)** — never a
-  `Co-Authored-By: Claude` trailer, never name Claude in commit messages / PR bodies. **Standing OK
-  to push to `main`** (solo portfolio repo; CI gates every push) — do not pause to ask.
+- **Commits use the maintainer's own git identity, with no AI/tool attribution** — never a
+  `Co-Authored-By` AI trailer, never name any AI assistant in commit messages / PR bodies, never write
+  a personal name/handle/username into tracked files (those stay in local, gitignored notes / env).
+  **Standing OK to push to `main`** (solo portfolio repo; CI gates every push) — do not pause to ask.
 
 ## File map (entry points; M2 additions in **bold**)
 - `src/models/fc_siam_diff.py` — FC-Siam-diff (M1). `src/models/siamese_segformer.py` (M2) — weight-
@@ -132,7 +136,7 @@ dir) is authoritative for all Leonardo/HPC specifics.
   `smoke.sbatch` (debug-QoS 4-GPU; takes a config arg), `smoke_cpu.sbatch` (serial CPU; uses `.venv-train`).
   `scripts/stage_weights.sh` stages smp MiT weights at pinned revisions (extend for DINOv2).
 
-## M4 — scope + first steps
+## M4 — scope
 ONNX export + PyTorch↔ONNX parity check + **curated** HF Space. **Export (`src/export.py`, PRD §9):**
 export each Track-A model to ONNX (fixed opset; dynamic batch/H/W where feasible); **assert
 PyTorch↔ONNXRuntime parity** (max abs diff below tol, else FAIL the export); emit the per-model
@@ -143,16 +147,13 @@ HF Space, FastAPI (uvicorn :7860) serving a React+MapLibre static build; **/cura
 — swipe slider, change-mask overlay + opacity, stats panel — on LEVIR-CD test pairs, CPU `onnxruntime`.
 Defer live-AOI (Track-B/OSCD) to M5.
 
-- **\*\*\* M4 NEEDS THE USER'S HF ORG/USERNAME: `[FILL IN ONCE USER PROVIDES]`** — the Model repo (weight
-  bundles) and the Space both live there. Ask before pushing bundles or creating the Space; it is a
-  NEEDS-CONFIRMATION item in DECISIONS "Open items". Do not invent a name.
 - **KNOWN CAVEAT — DINOv2 ONNX (verify parity SPECIFICALLY on the DINOv2 model, not just the CNN
   tiers):** `dinov2_cd` resizes inputs to `image_size=448` internally and uses
   `interpolate_pos_encoding=True`. If the 448 resize + pos-embed interpolation are not baked into the
   traced graph correctly, the exported model **silently misbehaves** (wrong output, no error). Export
   at a **fixed 448 grid** (bake the resize into `preprocessing.json`) and assert PyTorch↔ONNX parity on
   a real LEVIR-CD pair for the DINOv2 checkpoint. FC-Siam-diff and SegFormer are fully-convolutional and
-  export cleanly with dynamic H/W — DINOv2 is the risky one.
+  export cleanly with dynamic H/W — DINOv2 is the risky one. (All verified — see status.)
 - **Surface note:** M0–M3 train on **Leonardo** (compute nodes have **no egress** → weights pre-staged).
   M4's Space **deploys on Hugging Face**, which **does** have egress (it pulls the bundle from the HF
   Model repo at build/startup) — a different surface with different networking rules. The offline guards
@@ -164,32 +165,36 @@ Defer live-AOI (Track-B/OSCD) to M5.
   fixed sample (max abs logit diff ≤ `--tol` 1e-3, else RuntimeError → no bundle), and writes the
   bundle: `model.onnx`, `config.yaml`, `preprocessing.json`, `metrics_card.md`, `parity.json`.
   **DINOv2 export = fixed `image_size` grid (static H/W, only batch dynamic)** so the 448 resize +
-  `interpolate_pos_encoding` bake in as constants; **CNN tiers = dynamic batch + H/W**. The parity
-  pass also re-runs ORT on a second shape to prove the declared dynamic axes actually hold.
+  `interpolate_pos_encoding` bake in as constants; **CNN tiers = dynamic batch + H/W**. Parity verified
+  on the **real trained checkpoints** (SegFormer 2.29e-5, DINOv2+LoRA 8.01e-5).
 - **`tests/test_export.py`** — parity for all three tiers on tiny random-init models (CI-safe:
   `importorskip` onnx/onnxruntime/transformers/peft). The DINOv2 case forces a native pos-grid ≠
   export grid so `interpolate_pos_encoding` truly interpolates — the exact silent-misbehavior trap.
-- **Verified locally** (Python 3.12 CPU venv pinned to the training stack: torch 2.5.1, transformers
-  4.57.6, peft 0.19.1, smp 0.5.0): SegFormer `mit_b2` max |Δlogit| **6.3e-7** (dynamic H/W); DINOv2
-  native-518→448 max |Δlogit| **8.1e-8** (fixed 448). Parity is a graph property (independent of the
-  trained weight values), so this proves the export machinery; **re-run on the real `best.pt` for the
-  shippable bundle** (see blockers).
-- **`build_model` gained an `encoder_config` passthrough** (dinov2 only) so a random-init encoder can
-  be given a custom native grid — purely additive.
 - **Curated Space (`app/`)** — multi-stage `Dockerfile` (node build → py3.11 runtime, uvicorn :7860),
   FastAPI (`backend/app.py`: `/api/health|models|models/{id}/card|curated|curated/{id}/{which}.png|predict`,
   serves the built SPA), CPU-onnxruntime inference (`backend/inference.py`, consumes a bundle dir via
   `BUNDLES_DIR`; startup pull from `HF_BUNDLE_REPO` for the Space), React+Vite+MapLibre frontend
   (`frontend/`: two view-synced maps + draggable swipe divider, change overlay, opacity, stats,
-  model-card page with the real 4-tier results). **The change overlay is an aligned HTML `<img>`
-  over the maps, NOT a MapLibre raster layer** — a second stacked image-source raster proved
-  unreliable to paint (add-after-idle never repaints); an HTML element positioned via `map.project()`
-  always renders and gives smooth CSS opacity. Base imagery IS a MapLibre raster image layer.
-- **Verified in-browser** (chrome-devtools): frontend `npm run build` compiles, uvicorn serves the
-  build + API, both bundles predict (DINOv2 448 ~200 ms, SegFormer 256 ~750 ms on CPU), swipe +
-  overlay + opacity + pair/model switching + model-card all work. Demo runs on **synthetic placeholder
-  pairs** (`backend/gen_sample_pairs.py`) + **random-init bundles** (a banner says so); both are
-  gitignored (regenerate the pairs with the script; bundles come from HF / re-export).
+  model-card page with the real 4-tier results). Dark **"Observatory Console"** theme; fonts are
+  **self-hosted** (`@fontsource` IBM Plex, vendored into the build — no CDN at runtime).
+- **`inference.py` runs tile+stitch (`predict`):** the full scene is split into `tiling.tile_size`
+  (256px) native tiles, each run through the ONNX model at `input_size`, and the probability map is
+  stitched back to native resolution before thresholding. This is the bundle's documented preprocessing
+  and matches the eval harness — the single-pass shortcut is gone because a 0.5 m/px model fed the whole
+  1024 tile (≈4× its trained field of view) detects almost nothing. Stats derive from the stitched
+  mask; the overlay is rendered at native res as a **translucent amber fill + crisp 1–2px outline**.
+- **The change overlay is an aligned HTML `<img>` over the maps, NOT a MapLibre raster layer** — a
+  second stacked image-source raster proved unreliable to paint (add-after-idle never repaints); an HTML
+  element positioned via `map.project()` always renders, gives smooth CSS opacity, and **stays
+  pixel-aligned through zoom/pan** (re-aligned on every map `move`). Base imagery IS a MapLibre raster
+  image layer (`raster-resampling: linear`), cover-fit to fill the stage.
+- **Verified in-browser** (chrome-devtools + DOM measurement): frontend `npm run build` compiles, uvicorn
+  serves the build + API, both bundles predict, swipe + overlay + opacity + pair/model switching +
+  model-card all work; cover-fit is full-bleed at 1280/1440/ultrawide and the mask tracks the imagery
+  through zoom (954→1908 px lockstep) and pan. Demo runs on **real LEVIR-CD test tiles** (the 7 sharpest
+  by variance-of-Laplacian, change spread 1.5%→25%) + **real trained bundles** — all gitignored (LEVIR
+  imagery is not redistributed; bundles come from HF / re-export). `gen_sample_pairs.py` still makes
+  synthetic placeholder pairs if the real tiles aren't staged (a banner flags placeholder weights).
 
 ### M4 done locally — reproduce the real bundles + demo data
 The real artifacts live **only on the dev machine** (gitignored — bundles pull from HF at deploy,
@@ -199,34 +204,55 @@ LEVIR imagery is not redistributed per PRD §5.3). To regenerate after `scp`-ing
 python -m src.export --config configs/levircd_segformer.yaml --checkpoint <seg best.pt> --out-dir bundles
 python -m src.export --config configs/levircd_dinov2.yaml   --checkpoint <dv2 best.pt> --out-dir bundles
 cp -r bundles/* app/backend/models/                       # the Space's BUNDLES_DIR
-# curated pairs: drop real LEVIR test A/B tiles into app/backend/data/curated (256px before/after +
-# a manifest.json), or use gen_sample_pairs.py for synthetic placeholders.
+# curated pairs: drop real LEVIR test A/B tiles into app/backend/data/curated as native-1024
+#   before.png/after.png (A=before, B=after) + a manifest.json, or use gen_sample_pairs.py for
+#   synthetic placeholders. Then bake predictions to data/curated/_predictions.json (below).
 ```
 (Locally: Python 3.12 CPU venv pinned to the training stack; `Dinov2Model.from_pretrained` /smp
 download the *architecture* over the internet, then the checkpoint overwrites the weights.)
 
-### Remaining M4 steps (deploy-side — need the user)
-1. **HF org/username** (still a placeholder) → create the Model repo (push bundles; set
-   `HF_BUNDLE_REPO` on the Space to pull them) + create the Docker Space.
+**Baked prediction cache (`app/backend/data/curated/_predictions.json`, gitignored):** curated pairs +
+models are fixed, so every (pair, model) tile-stitch prediction is precomputed and written there. The
+backend loads it at startup (`_load_prediction_cache`) so the Space serves curated results **instantly**;
+a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the file and hitting each
+`/api/predict`, or by running `_prewarm` once.
+
+### Deploy — now UNBLOCKED (still gated on the maintainer's explicit go-ahead)
+1. **HF org name + identity/visibility decision** come from the maintainer **at deploy time** — do NOT
+   hard-code them in tracked files (local `DECISIONS.md` / env only). Create the Model repo (push
+   bundles; set `HF_BUNDLE_REPO` on the Space to pull them) + the Docker Space under that org.
 2. **Docker** is not installed on the dev Mac, so `docker build app/` wasn't run — the Dockerfile is
-   authored and the frontend build + backend serve were verified outside Docker. Install Docker for a
-   full local container build, or let HF build it at deploy.
-3. **Do NOT push bundles or deploy the Space until the user hands over the HF org name** (standing
-   convention + explicit hold — the user is waiting on the client and on approval to showcase publicly
-   under their name). Stay paused here.
-4. **HF free-tier performance plan (do at deploy time):** real DINOv2-base on CPU is ~4 s/tile
-   (SegFormer ~1 s). The curated pairs + models are fixed, so **precompute every (pair, model)
-   prediction at build time and bake the overlay-PNG + stats into the bundle/cache** (e.g. a
-   `curated_predictions.json` the backend loads at startup, or warm `_predict_cache` in a startup
-   hook) → the public Space serves curated results **instantly** with no CPU inference. Keep live
-   inference for the M5 live-AOI path. Optionally add ONNX INT8 quantization for the Track-B model.
+   authored and the frontend build + backend serve were verified outside Docker. Let HF build it at
+   deploy, or install Docker for a full local container build first.
+3. **PAUSE for the explicit go-ahead before pushing bundles or making the Space public** (outward-facing,
+   hard to reverse) — even though the org is now available.
+4. **HF free-tier performance is handled by the baked cache** — the public Space serves curated
+   predictions with **no live CPU inference**. For reference, full-scene tile-stitch on the ~2-vCPU free
+   tier is **DINOv2 ~51 s / SegFormer ~3 s per scene**, which is exactly why the cache exists; keep live
+   inference deferred to the M5 live-AOI path (optionally ONNX INT8 for the Track-B model there).
+
+### Known display note (accepted)
+- **Ultrawide cover-fit upscales to fill:** the native tile is 1024 px, so on a very wide stage cover-fit
+  scales it up (~2.18× on a 2560-wide window) to leave no letterbox voids — smooth (linear resampling),
+  and zoom/pan recover native pixels. At ≤1440-wide it fills at ≤~1.09× (native-sharp); ~1280 fills at
+  0.93× (downscaled/crisp). Accepted tradeoff (fill-first). Opt-out if ever wanted: cap the cover bump in
+  `CompareView.fitCover` — e.g. `zoom = cam.zoom + Math.min(coverBump, Math.log2(MAX_SCALE))` — to trade
+  a little letterbox back for a guaranteed ≤MAX_SCALE display scale.
+
+## Roadmap after M4
+- **M4 deploy** — gated on org name + identity/visibility decision (above), then push bundles + create
+  the HF Model repo & Space, and (optionally) a full Docker build.
+- **M5 — live Sentinel-2 AOI** (Track-B/OSCD): STAC → Planetary Computer → tile → Track-B ONNX → overlay;
+  AOI draw + date pickers + latency caps. This is where live CPU inference belongs.
+- **M6 — xBD disaster track** (multi-class building damage, xView2 weighted-F1 metric). The hardest and
+  latest milestone.
 
 ## Working conventions
-- **Smoke before full** (CPU serial or `boost_qos_dbg`). **PAUSE and ask the user before the first
+- **Smoke before full** (CPU serial or `boost_qos_dbg`). **PAUSE and ask the maintainer before the first
   full multi-GPU submission — and (M4+) before deploying/making public the HF Space or pushing weight
   bundles to a public HF Model repo** (outward-facing, hard to reverse).
 - Checkpoint every ~30 min + `--resume-if-exists` so a walltime cut never loses progress.
-- Commit granularly (user identity, no Claude attribution); keep `DECISIONS.md` + `experiments/LOG.md`
-  current; confirm CI is green after each push.
-- **When blocked, or when an assumption is load-bearing, ask the user** — they relay questions to a
+- Commit granularly (maintainer identity, no AI/tool attribution); keep `DECISIONS.md` +
+  `experiments/LOG.md` current; confirm CI is green after each push.
+- **When blocked, or when an assumption is load-bearing, ask the maintainer** — they relay questions to a
   senior reviewer and return answers. Don't guess on irreversible or costly choices.

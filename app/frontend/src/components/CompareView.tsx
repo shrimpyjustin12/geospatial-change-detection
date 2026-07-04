@@ -25,6 +25,25 @@ interface Props {
   overlayUrl: string | null;
   overlayOpacity: number;
   showOverlay: boolean;
+  loading?: boolean;
+  legendLabel?: string;
+}
+
+// Cover-fit: fill the whole stage edge-to-edge (no letterbox voids), cropping any overflow. The
+// square image quad is grown until it covers the viewport's LONGER axis; overflow is clipped by
+// .compare-wrap, pan/zoom reaches the cropped areas, and the overlay tracks via map.project().
+// On an ultra-wide stage a 1024px tile can't fill without upscaling — MapLibre's linear resampling
+// keeps that smooth (never blocky), and zooming recovers native pixels.
+function fitCover(map: maplibregl.Map): void {
+  const cam = map.cameraForBounds(BOUNDS, { padding: 0 }); // "contain" zoom (fits the shorter axis)
+  if (!cam || cam.zoom == null) return;
+  const c = map.getContainer();
+  const vw = c.clientWidth;
+  const vh = c.clientHeight;
+  if (!vw || !vh) return;
+  // bump the contain zoom by log2(longer/shorter) so the square also covers the longer axis
+  const coverBump = Math.log2(Math.max(vw, vh) / Math.min(vw, vh));
+  map.jumpTo({ center: cam.center, zoom: cam.zoom + coverBump });
 }
 
 function makeMap(container: HTMLDivElement): maplibregl.Map {
@@ -37,8 +56,9 @@ function makeMap(container: HTMLDivElement): maplibregl.Map {
     dragRotate: false,
     pitchWithRotate: false,
     renderWorldCopies: false,
+    // pan + zoom are on by default (dragPan / scrollZoom / dblclick / touch); rotate/pitch stay off
   });
-  map.on("load", () => map.fitBounds(BOUNDS, { animate: false, padding: 8 }));
+  map.on("load", () => fitCover(map));
   return map;
 }
 
@@ -56,7 +76,8 @@ function setImage(map: maplibregl.Map, url: string): void {
     id: "img",
     type: "raster",
     source: "img",
-    paint: { "raster-opacity": 1, "raster-fade-duration": 0 },
+    // explicit linear resampling: smooth photographic interpolation, never nearest-neighbor blocks
+    paint: { "raster-opacity": 1, "raster-fade-duration": 0, "raster-resampling": "linear" },
   });
 }
 
@@ -66,6 +87,8 @@ export default function CompareView({
   overlayUrl,
   overlayOpacity,
   showOverlay,
+  loading = false,
+  legendLabel,
 }: Props) {
   const beforeDiv = useRef<HTMLDivElement>(null);
   const afterDiv = useRef<HTMLDivElement>(null);
@@ -116,7 +139,11 @@ export default function CompareView({
     };
     bm.on("move", sync(bm, am));
     am.on("move", sync(am, bm));
-    bm.on("resize", alignOverlay);
+    // on container resize, re-cover the stage from the before map; its jumpTo syncs the after map
+    bm.on("resize", () => {
+      fitCover(bm);
+      alignOverlay();
+    });
     bm.on("idle", alignOverlay);
 
     let loaded = 0;
@@ -181,8 +208,21 @@ export default function CompareView({
         src={overlayUrl ?? ""}
         style={{ opacity: showOverlay && overlayUrl ? overlayOpacity : 0 }}
       />
-      <span className="corner-label label-before">BEFORE</span>
-      <span className="corner-label label-after">AFTER</span>
+
+      <div className="frame" aria-hidden="true">
+        <span className="tl" />
+        <span className="tr" />
+        <span className="bl" />
+        <span className="br" />
+      </div>
+
+      <div className="hud chip before">BEFORE</div>
+      <div className="hud chip after">AFTER</div>
+      <div className="hud chip legendchip">
+        <span className="sq" /> CHANGE MASK{legendLabel ? ` · ${legendLabel}` : ""}
+      </div>
+      <div className="hud chip gsd">SOURCE GSD 0.5&nbsp;m/px</div>
+
       <div
         className="swipe-divider"
         style={{ left: `${split}%` }}
@@ -191,8 +231,15 @@ export default function CompareView({
           (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         }}
       >
-        <div className="swipe-handle">⇆</div>
+        <div className="swipe-handle">⇄</div>
       </div>
+
+      {loading && (
+        <div className="scanning">
+          <div className="beam" />
+          <span className="tagword">Analyzing</span>
+        </div>
+      )}
     </div>
   );
 }
