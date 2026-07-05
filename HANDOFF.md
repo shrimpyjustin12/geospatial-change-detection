@@ -46,8 +46,12 @@ dir) is authoritative for all Leonardo/HPC specifics.
   **Honest limitation (keep prominent):** per-scene LoRA mean **0.767**, std **~0.31**, **min 0.00** —
   the FM lifts the mean but does NOT tighten variance or fix the hardest small/subtle tiles (10/12
   worst tiles `small_subtle`; 11/12 for frozen). Artifacts in `docs/results/` (dinov2_lora_*).
-- **M4 — export + parity + curated Space are DONE and verified on real weights; only the HF push/deploy
-  remains, and it is now UNBLOCKED (an HF org is available — see "Deploy" below).** `src/export.py`
+- **M4 — COMPLETE (deployed to Hugging Face 2026-07-05; public Space live and verified logged-out).**
+  Live URLs — Space (public): `huggingface.co/spaces/GeospatiaProject/geospatial1`; direct app:
+  `geospatiaproject-geospatial1.hf.space`; Model repo (public): `GeospatiaProject/geospatial-1`. The
+  curated aerial mode serves **precomputed predictions from the baked cache** (no runtime inference) and
+  is **verified working for anonymous visitors**. Build/deploy detail under "Deploy — DONE" below.
+  `src/export.py`
   (ONNX export + parity + artifact bundle) done; parity **verified on the real trained checkpoints** —
   SegFormer `mit_b2` max |Δlogit| **2.29e-5**, DINOv2+LoRA (fixed 448) **8.01e-5** (tol 1e-3). The
   curated Space is **built and verified locally, end-to-end**, on the real bundles + real LEVIR-CD test
@@ -217,19 +221,24 @@ backend loads it at startup (`_load_prediction_cache`) so the Space serves curat
 a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the file and hitting each
 `/api/predict`, or by running `_prewarm` once.
 
-### Deploy — now UNBLOCKED (still gated on the maintainer's explicit go-ahead)
-1. **HF org name + identity/visibility decision** come from the maintainer **at deploy time** — do NOT
-   hard-code them in tracked files (local `DECISIONS.md` / env only). Create the Model repo (push
-   bundles; set `HF_BUNDLE_REPO` on the Space to pull them) + the Docker Space under that org.
-2. **Docker** is not installed on the dev Mac, so `docker build app/` wasn't run — the Dockerfile is
-   authored and the frontend build + backend serve were verified outside Docker. Let HF build it at
-   deploy, or install Docker for a full local container build first.
-3. **PAUSE for the explicit go-ahead before pushing bundles or making the Space public** (outward-facing,
-   hard to reverse) — even though the org is now available.
-4. **HF free-tier performance is handled by the baked cache** — the public Space serves curated
-   predictions with **no live CPU inference**. For reference, full-scene tile-stitch on the ~2-vCPU free
-   tier is **DINOv2 ~51 s / SegFormer ~3 s per scene**, which is exactly why the cache exists; keep live
-   inference deferred to the M5 live-AOI path (optionally ONNX INT8 for the Track-B model there).
+### Deploy — DONE (2026-07-05)
+- **Live.** Public Docker Space `GeospatiaProject/geospatial1` (app URL `geospatiaproject-geospatial1.hf.space`)
+  pulls the two Track-A bundles at startup from the public Model repo `GeospatiaProject/geospatial-1` via the
+  `HF_BUNDLE_REPO` Space variable. Bundles uploaded with `HfApi.upload_folder`; `app/` uploaded EXCLUDING
+  `backend/models/` (kept lean) but INCLUDING the baked cache (`_predictions.json`, 14 entries) + curated
+  pairs/images. HF built the image — no local Docker build needed.
+- **Verified logged-out** (anonymous, isolated browser context): health ok, real weights
+  (`is_placeholder=False`), model cards clean, `/api/predict` served instantly from the baked cache
+  (~0.3–0.5 s round-trip, NOT the ~51 s DINOv2 tile-stitch), and swipe / overlay / opacity / pair-switch /
+  model-card all work.
+- **Identity:** repo content + served artifacts are free of personal/tool identifiers. A leak was caught
+  pre-push — both `metrics_card.md` embedded the absolute local checkpoint path; sanitized to `best.pt`
+  and `src/export.py` patched to emit the basename only (on `main`, CI green). The org/visibility choice
+  and exact deploy specifics live in the local gitignored `DECISIONS.md` ("M4 DEPLOY" section).
+- **Free-tier perf** is handled by the baked cache — the public Space serves curated predictions with **no
+  live CPU inference**. For reference, full-scene tile-stitch on the ~2-vCPU free tier is **DINOv2 ~51 s /
+  SegFormer ~3 s per scene**, which is exactly why the cache exists. The same cache-first pattern is the
+  basis for M5 (below).
 
 ### Known display note (accepted)
 - **Ultrawide cover-fit upscales to fill:** the native tile is 1024 px, so on a very wide stage cover-fit
@@ -240,10 +249,29 @@ a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the 
   a little letterbox back for a guaranteed ≤MAX_SCALE display scale.
 
 ## Roadmap after M4
-- **M4 deploy** — gated on org name + identity/visibility decision (above), then push bundles + create
-  the HF Model repo & Space, and (optionally) a full Docker build.
-- **M5 — live Sentinel-2 AOI** (Track-B/OSCD): STAC → Planetary Computer → tile → Track-B ONNX → overlay;
-  AOI draw + date pickers + latency caps. This is where live CPU inference belongs.
+- **M5 — curated Sentinel-2 (Track-B) mode — REVISED SCOPE (decided with the reviewer; simpler than the
+  PRD §10.2 fully-live plan).** Add a CURATED Sentinel-2 mode to the SAME Space: a handful of real-world
+  AOIs whose predictions are PRECOMPUTED and served instantly from cache, exactly like the curated aerial
+  mode. Free-tier, CPU-only — **no GPU, no runtime/live inference, no runtime STAC, no latency caps.**
+  - **Core work (STILL REQUIRED):** train a Sentinel-2-native model on **OSCD** on Leonardo (Track-B, PRD
+    §6.3). Aerial models do NOT transfer to 10 m Sentinel-2. Compact Siamese CD model; input = Sentinel-2
+    **RGB+NIR** (full 13-band optional via config). Export to ONNX like the aerial tiers.
+  - **STAC / Planetary Computer = BUILD-TIME ONLY:** fetch ~4–6 low-cloud Sentinel-2 L2A pairs for chosen
+    AOIs, co-register once, precompute predictions, bake into the cache/bundle. No STAC or auth at runtime.
+  - **AOI selection:** real-world locations with LARGE, OBVIOUS change visible even at 10 m (major urban
+    expansion, large new construction, reservoir/dam filling, airport builds, deforestation). Prioritize
+    clearest-change + lowest-cloud for visual quality.
+  - **Frontend:** new Sentinel-2 tab in the existing Space. Show AOIs as pins on a MapLibre basemap;
+    clicking a pin loads the before/after S2 pair + change overlay + stats, reusing the existing
+    swipe/overlay/stats + dark theme. UI copy must be honest: label **Sentinel-2 10 m**, note it's a
+    coarser domain than the aerial track, and that these are curated real-world examples.
+  - **Training:** OSCD is tiny (24 pairs) → **single-GPU is sufficient and RECOMMENDED over the 4-GPU
+    default** (avoids effective-batch / convergence issues on a small dataset); if DDP is used, scale LR +
+    warmup. Stage OSCD on the Leonardo **login node** (no egress on compute nodes), same pattern as LEVIR-CD.
+  - **Honesty:** OSCD is small → expect modest F1; present directionally-correct with caveats. Aerial stays
+    the crisp/high-res showcase; Sentinel-2 is the any-real-location showcase.
+  - **OUT OF SCOPE for now (optional later):** a live "run on a fresh STAC fetch" button — deferred; do NOT
+    build unless explicitly asked.
 - **M6 — xBD disaster track** (multi-class building damage, xView2 weighted-F1 metric). The hardest and
   latest milestone.
 
