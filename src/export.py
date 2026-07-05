@@ -42,6 +42,8 @@ import torch
 
 from src.config import expand_env, load_config
 from src.data.levircd import IMAGENET_MEAN, IMAGENET_STD
+from src.data.oscd import _S2_SCALE, OSCD_MEAN, OSCD_STD
+from src.data.oscd import BAND_ORDER as OSCD_BANDS
 from src.models import build_model
 
 # Fixed opset: 17 covers LayerNorm / GELU / bicubic Resize used by the ViT + decoders, and is
@@ -103,23 +105,39 @@ def input_spec(cfg: dict[str, Any]) -> dict[str, Any]:
     """
     name = str(cfg["model"].get("name", "fc_siam_diff"))
     tile = int(cfg["data"].get("tile_size", 256))
+    in_ch = int(cfg["model"].get("in_channels", 3))
     if name == "dinov2_cd":
         size = int(cfg["model"].get("image_size", 448))
-        # input (B, 2, 3, H, W) / output (B, out, H, W): only batch is dynamic for DINOv2.
+        # input (B, 2, C, H, W) / output (B, out, H, W): only batch is dynamic for DINOv2.
         dynamic_axes = {"input": {0: "batch"}, "logits": {0: "batch"}}
-        return {"size": size, "dynamic_hw": False, "dynamic_axes": dynamic_axes, "tile": tile}
+        return {
+            "size": size,
+            "dynamic_hw": False,
+            "dynamic_axes": dynamic_axes,
+            "tile": tile,
+            "in_ch": in_ch,
+        }
     dynamic_axes = {
         "input": {0: "batch", 3: "height", 4: "width"},
         "logits": {0: "batch", 2: "height", 3: "width"},
     }
-    return {"size": tile, "dynamic_hw": True, "dynamic_axes": dynamic_axes, "tile": tile}
+    return {
+        "size": tile,
+        "dynamic_hw": True,
+        "dynamic_axes": dynamic_axes,
+        "tile": tile,
+        "in_ch": in_ch,
+    }
 
 
-def _sample(batch: int, size: int, *, seed: int = 0) -> torch.Tensor:
-    """Deterministic normalized-looking input ``(batch, 2, 3, size, size)`` for parity."""
+def _sample(batch: int, size: int, in_ch: int = 3, *, seed: int = 0) -> torch.Tensor:
+    """Deterministic input ``(batch, 2, in_ch, size, size)`` for parity.
+
+    Values need not be realistic — a unit-ish normal exercises the graph identically for torch and
+    ORT. ``in_ch`` is 3 for the RGB aerial tiers, 4 for the OSCD Sentinel-2 (RGB+NIR) model.
+    """
     gen = torch.Generator().manual_seed(seed)
-    # ImageNet-normalized pixels land roughly in [-2.5, 2.5]; a unit-ish normal exercises the graph.
-    return torch.randn(batch, 2, 3, size, size, generator=gen)
+    return torch.randn(batch, 2, in_ch, size, size, generator=gen)
 
 
 @torch.no_grad()
@@ -140,8 +158,9 @@ def export_and_verify(
     import onnxruntime as ort
 
     size = int(spec["size"])
+    in_ch = int(spec["in_ch"])
     onnx_path.parent.mkdir(parents=True, exist_ok=True)
-    example = _sample(1, size)
+    example = _sample(1, size, in_ch)
 
     torch.onnx.export(
         model,
@@ -174,10 +193,10 @@ def export_and_verify(
 
     # Exercise a declared dynamic axis so a mis-declared graph fails loudly here, not in the demo.
     if spec["dynamic_hw"]:
-        alt = _sample(1, size + 32, seed=1)  # different H/W (stays a multiple of 32 when size is)
+        alt = _sample(1, size + 32, in_ch, seed=1)  # different H/W (multiple of 32 when size is)
         alt_desc = f"dynamic H/W at {alt.shape[-1]}px"
     else:
-        alt = _sample(2, size, seed=1)  # different batch
+        alt = _sample(2, size, in_ch, seed=1)  # different batch
         alt_desc = "dynamic batch=2"
     secondary = _parity_at(alt)
 
@@ -240,14 +259,28 @@ def write_bundle(
     threshold, thr_source = _recommended_threshold(summary)
     name = str(cfg["model"].get("name"))
     size = int(spec["size"])
+    in_ch = int(spec["in_ch"])
+    if in_ch == 4:  # OSCD Sentinel-2 (RGB+NIR)
+        band_order = list(OSCD_BANDS)
+        input_layout = "(batch, 2 dates, 4 bands [R,G,B,NIR], H, W)"
+        value_range = (
+            f"float32 reflectance; divide uint16 Sentinel-2 L2A (bands B04,B03,B02,B08) by "
+            f"{int(_S2_SCALE)} BEFORE normalization"
+        )
+        normalization = {"mean": list(OSCD_MEAN), "std": list(OSCD_STD)}
+    else:  # RGB aerial tiers
+        band_order = ["R", "G", "B"]
+        input_layout = "(batch, 2 dates, 3 RGB channels, H, W)"
+        value_range = "float32; divide 8-bit RGB by 255 BEFORE normalization"
+        normalization = {"mean": list(IMAGENET_MEAN), "std": list(IMAGENET_STD)}
     preprocessing = {
         "input_name": "input",
         "output_name": "logits",
-        "input_shape": ["batch", 2, 3, size, size],
-        "input_layout": "(batch, 2 dates, 3 RGB channels, H, W)",
-        "band_order": ["R", "G", "B"],
-        "value_range": "float32; divide 8-bit RGB by 255 BEFORE normalization",
-        "normalization": {"mean": list(IMAGENET_MEAN), "std": list(IMAGENET_STD)},
+        "input_shape": ["batch", 2, in_ch, size, size],
+        "input_layout": input_layout,
+        "band_order": band_order,
+        "value_range": value_range,
+        "normalization": normalization,
         "input_size": size,
         "dynamic_hw": bool(spec["dynamic_hw"]),
         "resize_to_input": (
@@ -286,17 +319,23 @@ def _metrics_card(
     m = cfg["model"]
     ckpt = meta.get("checkpoint")
     ckpt_name = Path(ckpt).name if ckpt else "random-init"
+    if str(cfg["data"].get("name")) == "oscd":
+        dataset_line = (
+            "- **Dataset:** OSCD (Onera Satellite CD; Sentinel-2 ~10 m, RGB+NIR, binary change)"
+        )
+    else:
+        dataset_line = "- **Dataset:** LEVIR-CD (binary building change, 0.5 m RGB aerial)"
     lines = [
         f"# Model card — {cfg['run_id']}",
         "",
         f"- **Architecture:** `{m.get('name')}` (encoder `{m.get('encoder')}`, fusion "
         f"`{m.get('fusion')}`)",
-        "- **Dataset:** LEVIR-CD (binary building change, 0.5 m RGB aerial)",
+        dataset_line,
         f"- **Checkpoint:** `{ckpt_name}` (epoch {meta.get('epoch')})",
-        "- **Intended use:** portfolio/demo only; trained weights inherit LEVIR-CD "
+        "- **Intended use:** portfolio/demo only; trained weights inherit the dataset's "
         "research/non-commercial terms.",
         "",
-        "## Metrics (LEVIR-CD test; threshold selected on val, applied to test)",
+        "## Metrics (test split; threshold selected on val, applied to test)",
     ]
     if summary and "operating_point" in summary:
         op = summary["operating_point"]
