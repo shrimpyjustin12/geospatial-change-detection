@@ -284,14 +284,15 @@ def _metrics_card(
     summary: dict[str, Any] | None,
 ) -> str:
     m = cfg["model"]
+    ckpt = meta.get("checkpoint")
+    ckpt_name = Path(ckpt).name if ckpt else "random-init"
     lines = [
         f"# Model card — {cfg['run_id']}",
         "",
         f"- **Architecture:** `{m.get('name')}` (encoder `{m.get('encoder')}`, fusion "
         f"`{m.get('fusion')}`)",
         "- **Dataset:** LEVIR-CD (binary building change, 0.5 m RGB aerial)",
-        f"- **Checkpoint:** `{Path(meta['checkpoint']).name if meta.get('checkpoint') else 'random-init'}`"
-        f" (epoch {meta.get('epoch')})",
+        f"- **Checkpoint:** `{ckpt_name}` (epoch {meta.get('epoch')})",
         "- **Intended use:** portfolio/demo only; trained weights inherit LEVIR-CD "
         "research/non-commercial terms.",
         "",
