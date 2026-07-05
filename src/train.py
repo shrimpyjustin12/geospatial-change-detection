@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
 
 from src import dist as D
 from src.config import expand_env, load_config
-from src.data.levircd import TiledLEVIRCD
+from src.data import build_dataset
 from src.losses import BceDiceLoss
 from src.metrics import prf1_iou
 from src.models import build_model
@@ -63,7 +63,7 @@ def resolve_git_sha(repo_root: Path) -> str:
 
 
 def build_loader(
-    dataset: TiledLEVIRCD,
+    dataset: Any,
     batch_size: int,
     world_size: int,
     rank: int,
@@ -185,13 +185,9 @@ def main() -> None:
 
     # ---- data
     train_split = dcfg.get("split_for_smoke", "train")
-    train_ds = TiledLEVIRCD(
-        root=dcfg["root"],
-        split=train_split,
-        tile_size=int(dcfg.get("tile_size", 256)),
-        augment=bool(dcfg.get("augment", train_split == "train")),
-    )
-    val_ds = TiledLEVIRCD(root=dcfg["root"], split="val", tile_size=int(dcfg.get("tile_size", 256)))
+    augment = bool(dcfg.get("augment", train_split == "train"))
+    train_ds = build_dataset(dcfg, split=train_split, augment=augment)
+    val_ds = build_dataset(dcfg, split="val", augment=False)
     num_workers = int(dcfg.get("num_workers", 4))
     train_loader, train_sampler = build_loader(
         train_ds,

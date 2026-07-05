@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from src.config import expand_env, load_config
-from src.data.levircd import TiledLEVIRCD
+from src.data import build_dataset
 from src.eval_harness import (
     average_precision,
     best_f1_operating_point,
@@ -237,11 +237,9 @@ def _save_gallery(gallery: list[dict[str, Any]], path: Path) -> bool:
     return True
 
 
-def _make_loader(cfg: dict[str, Any], split: str) -> tuple[DataLoader, TiledLEVIRCD]:
+def _make_loader(cfg: dict[str, Any], split: str) -> tuple[DataLoader, Any]:
     dcfg = cfg["data"]
-    dataset = TiledLEVIRCD(
-        root=dcfg["root"], split=split, tile_size=int(dcfg.get("tile_size", 256))
-    )
+    dataset = build_dataset(dcfg, split=split, augment=False)
     loader = DataLoader(
         dataset,
         batch_size=int(cfg.get("eval", {}).get("batch_size", cfg["train"]["batch_size"])),
