@@ -1,0 +1,46 @@
+# Track B · OSCD (Sentinel-2, RGB+NIR) — compact Siamese CD (FC-Siam-diff, 4-band).
+# SINGLE-GPU by design: OSCD is tiny (24 pairs) — the 4-GPU DDP default hurts convergence on such
+# a small dataset (HANDOFF revised M5 scope). Do NOT set ddp:true here.
+run_id: oscd_s2_baseline
+seed: 1337
+
+data:
+  name: oscd
+  root: ${WORK}/sat-change-detection/data/oscd    # staged by scripts/stage_data.sh (login node)
+  tile_size: 256
+  num_workers: 4
+  bands: [R, G, B, NIR]                            # S2 B04, B03, B02, B08
+
+model:
+  name: fc_siam_diff
+  in_channels: 4          # RGB+NIR (vs 3 for the aerial Track-A tiers)
+  fusion: diff            # diff | concat
+  base_channels: 16
+  out_channels: 1
+
+loss:
+  type: bce_dice
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 100
+  batch_size: 16          # single-GPU effective batch (ddp:false)
+  lr: 0.001
+  lr_reference_batch: 16  # no LR scaling on one GPU
+  weight_decay: 0.0001
+  optimizer: adamw
+  scheduler: cosine
+  amp: true               # bf16 on A100 (leonardo.md)
+  ddp: false              # SINGLE-GPU — do not revert to 4-GPU DDP for OSCD
+  grad_checkpointing: false
+  ckpt_every_min: 30
+  resume_if_exists: true
+
+eval:
+  threshold: 0.5          # PR curve selects the reported operating point (PRD §8)
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard
+  log_dir: ${WORK}/sat-change-detection/results
