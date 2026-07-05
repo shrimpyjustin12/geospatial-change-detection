@@ -22,12 +22,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _train_band_stats(root: str, max_tiles: int = 500) -> dict[str, list[float]]:
-    """Per-band (R,G,B,NIR) mean/std over up to ``max_tiles`` train tiles of ÷10000 reflectance."""
+    """Per-band (R,G,B,NIR) mean/std over up to ``max_tiles`` train tiles of ÷10000 reflectance.
+
+    Constructs the loader with identity normalization (mean 0 / std 1) so ``ds[i]["image"]`` is the
+    raw reflectance regardless of the configured OSCD_MEAN/OSCD_STD — keeping this idempotent even
+    after the stats are backfilled into the loader.
+    """
     import torch
 
     from src.data.oscd import TiledOSCD
 
-    ds = TiledOSCD(root=root, split="train", tile_size=256)  # placeholder norm -> raw reflectance
+    ds = TiledOSCD(
+        root=root,
+        split="train",
+        tile_size=256,
+        mean=(0.0, 0.0, 0.0, 0.0),
+        std=(1.0, 1.0, 1.0, 1.0),
+    )
     n = min(len(ds), max_tiles)
     csum = torch.zeros(4)
     csq = torch.zeros(4)

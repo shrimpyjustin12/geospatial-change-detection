@@ -31,12 +31,11 @@ _BAND_IDS: tuple[str, ...] = ("B04", "B03", "B02", "B08")  # R, G, B, NIR
 # Sentinel-2 L2A reflectance is uint16 scaled by 10000 — divide before standardizing.
 _S2_SCALE = 10000.0
 
-# D2 (plan Task 9): replace with per-band mean/std computed over the OSCD *train* split, on the
-# post-``/_S2_SCALE`` reflectance values. Until staged, standardization is a no-op (mean 0 / std 1)
-# so scaling alone drives the input distribution; refined + kept in sync with export's
-# ``preprocessing.json`` once the real stats are known.
-OSCD_MEAN: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
-OSCD_STD: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+# Per-band (R,G,B,NIR) mean/std over the OSCD *train* split, on ÷_S2_SCALE reflectance — computed
+# on the staged dataset (scripts/smoke_load_oscd.py). NIR (0.20) > RGB (~0.13) as vegetation should.
+# export's preprocessing.json imports these, so training and the exported bundle stay in sync.
+OSCD_MEAN: tuple[float, float, float, float] = (0.13559, 0.13234, 0.13953, 0.2011)
+OSCD_STD: tuple[float, float, float, float] = (0.08096, 0.05684, 0.04359, 0.08868)
 
 # Cities held out from the train list to form a scene-disjoint val split (threshold selection
 # stays off test — standing decision). Deterministic: the last ``_VAL_HOLDOUT`` train cities.
