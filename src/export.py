@@ -290,7 +290,8 @@ def _metrics_card(
         f"- **Architecture:** `{m.get('name')}` (encoder `{m.get('encoder')}`, fusion "
         f"`{m.get('fusion')}`)",
         "- **Dataset:** LEVIR-CD (binary building change, 0.5 m RGB aerial)",
-        f"- **Checkpoint:** `{meta.get('checkpoint')}` (epoch {meta.get('epoch')})",
+        f"- **Checkpoint:** `{Path(meta['checkpoint']).name if meta.get('checkpoint') else 'random-init'}`"
+        f" (epoch {meta.get('epoch')})",
         "- **Intended use:** portfolio/demo only; trained weights inherit LEVIR-CD "
         "research/non-commercial terms.",
         "",
