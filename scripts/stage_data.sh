@@ -103,8 +103,69 @@ stage_levircd() {
   done
 }
 
+# Canonical OSCD split (Daudt et al. / torchgeo): 14 train cities, 10 test cities. Used as a
+# fallback if the downloaded archive does not ship train.txt/test.txt at the dataset root.
+OSCD_CANON_TRAIN="aguasclaras,bercy,bordeaux,nantes,paris,rennes,saclay_e,abudhabi,cupertino,pisa,beihai,hongkong,beirut,mumbai"
+OSCD_CANON_TEST="brasilia,chongqing,dubai,lasvegas,milano,montpellier,norcia,rio,saclay_w,valencia"
+
+stage_oscd() {
+  # OSCD (Onera Satellite Change Detection) — Sentinel-2, 24 pairs (14 train / 10 test), 13 bands.
+  # SOURCE + CHECKSUMS ARE RECONCILED AT STAGING (D1 / plan Task 8): torchgeo's pinned version has
+  # no OSCD downloader, so point OSCD_REPO/OSCD_REV/OSCD_ARCHIVES at the confirmed HF dataset mirror
+  # of the Onera distribution. md5s are OPTIONAL — when unset, sha256 is recorded on first run;
+  # pin OSCD_MD5S afterwards for idempotent verification.
+  local root="${DATA_ROOT}/oscd"
+  local arc="${root}/_archives"
+  local manifest="${CHECKSUM_DIR}/oscd.sha256"
+  local repo="${OSCD_REPO:?set OSCD_REPO to the confirmed OSCD HF dataset mirror (D1 / plan Task 8)}"
+  local rev="${OSCD_REV:-main}"
+  local archives md5s
+  read -r -a archives <<< "${OSCD_ARCHIVES:-images.zip train_labels.zip test_labels.zip}"
+  read -r -a md5s <<< "${OSCD_MD5S:-}"
+
+  fetch_all "$repo" "$rev" "$arc" "${archives[@]}"
+  local i
+  for i in "${!archives[@]}"; do
+    if [ -n "${md5s[$i]:-}" ]; then
+      verify_md5 "${arc}/${archives[$i]}" "${md5s[$i]}"
+    else
+      log "md5 SKIPPED for ${archives[$i]} (set OSCD_MD5S to pin at staging)"
+    fi
+    record_or_verify_sha256 "${arc}/${archives[$i]}" "$manifest"
+  done
+
+  for z in "${archives[@]}"; do
+    log "extracting ${z} ..."
+    unzip -q -o "${arc}/${z}" -d "$root"
+  done
+  rm -rf "${arc}/.cache"
+
+  # If cities are wrapped in a single top folder (common in the Onera zips), flatten it up to $root.
+  local wrappers; wrappers=$(find "$root" -maxdepth 1 -mindepth 1 -type d ! -name '_archives' | wc -l | tr -d ' ')
+  if [ "$wrappers" = "1" ]; then
+    local wrap; wrap=$(find "$root" -maxdepth 1 -mindepth 1 -type d ! -name '_archives')
+    if [ -z "$(find "$wrap" -maxdepth 1 -name 'imgs_*' -o -maxdepth 1 -name 'cm')" ]; then
+      log "flattening wrapper dir: $(basename "$wrap")"
+      find "$wrap" -maxdepth 1 -mindepth 1 -exec mv -t "$root" {} +
+      rmdir "$wrap" 2>/dev/null || true
+    fi
+  fi
+
+  # Ensure split lists at the root (TiledOSCD reads train.txt/test.txt); write canonical if absent.
+  [ -f "${root}/train.txt" ] || { printf '%s\n' "$OSCD_CANON_TRAIN" > "${root}/train.txt"; log "wrote canonical train.txt (14 cities)"; }
+  [ -f "${root}/test.txt" ]  || { printf '%s\n' "$OSCD_CANON_TEST"  > "${root}/test.txt";  log "wrote canonical test.txt (10 cities)"; }
+
+  log "OSCD staged at: $root"
+  log "top-level entries:"; find "$root" -maxdepth 1 -mindepth 1 | sort | sed 's/^/    /'
+  local ncities; ncities=$(find "$root" -maxdepth 2 -type d -name 'imgs_*' 2>/dev/null | sed 's#/imgs_[^/]*$##' | sort -u | wc -l | tr -d ' ')
+  log "cities with imagery (imgs_*): ${ncities}"
+  log "NOTE (D1): verify each city has <city>/imgs_{1,2}[_rect]/B0{2,3,4,8}.tif and <city>/cm/cm.png;"
+  log "  OSCD label archives may extract into a separate subtree — move each city's cm/ under <root>/<city>/ if so."
+}
+
 case "$DATASET" in
   levircd) stage_levircd ;;
-  *) die "unknown dataset '$DATASET' (supported: levircd)" ;;
+  oscd)    stage_oscd ;;
+  *) die "unknown dataset '$DATASET' (supported: levircd, oscd)" ;;
 esac
 log "done: ${DATASET}"

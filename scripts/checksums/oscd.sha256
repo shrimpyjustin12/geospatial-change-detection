@@ -1,0 +1,2 @@
+# OSCD archive SHA256s — recorded on the first login-node stage (scripts/stage_data.sh oscd).
+# Populated + committed during staging (D1 / plan Task 8). Format: "<sha256>  <archive>".
