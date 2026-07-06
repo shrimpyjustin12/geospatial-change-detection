@@ -37,3 +37,27 @@ export interface PredictResult {
   model_id: string;
   n_tiles?: number;
 }
+
+// A curated Sentinel-2 AOI: metadata + the offline-baked prediction summary (overlay served as a
+// PNG file, not embedded). Everything here comes straight from the cache — no runtime inference.
+export interface Sentinel2AOI {
+  id: string;
+  title: string;
+  description: string;
+  source: string;
+  tile: string;
+  center: [number, number]; // [lng, lat]
+  width: number;
+  height: number;
+  date_before: string;
+  date_after: string;
+  cloud_before: number;
+  cloud_after: number;
+  model_id: string;
+  threshold: number;
+  is_placeholder: boolean;
+  n_tiles: number;
+  input_size: number;
+  elapsed_ms: number;
+  stats: PredictStats;
+}

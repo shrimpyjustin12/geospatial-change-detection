@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import CompareView from "./components/CompareView";
 import ModelCard from "./components/ModelCard";
-import type { CuratedPair, ModelSummary, PredictResult } from "./types";
+import Sentinel2View from "./components/Sentinel2View";
+import type { CuratedPair, ModelSummary, PredictResult, Sentinel2AOI } from "./types";
 
-type Tab = "curated" | "card";
+type Tab = "curated" | "sentinel2" | "card";
 
 // friendly labels for the served bundle ids (falls back to the raw id)
 const MODEL_LABELS: Record<string, string> = {
@@ -38,6 +39,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("curated");
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [pairs, setPairs] = useState<CuratedPair[]>([]);
+  const [s2, setS2] = useState<Sentinel2AOI[]>([]);
   const [modelId, setModelId] = useState<string>("");
   const [pairId, setPairId] = useState<string>("");
   const [result, setResult] = useState<PredictResult | null>(null);
@@ -56,6 +58,11 @@ export default function App() {
         if (p.length) setPairId(p[0].id);
       })
       .catch((e) => setError(String(e)));
+    // Sentinel-2 AOIs load independently; a missing S2 cache must not break the aerial tab.
+    api
+      .sentinel2()
+      .then(setS2)
+      .catch((e) => console.warn("sentinel2 list failed:", e));
   }, []);
 
   useEffect(() => {
@@ -95,13 +102,27 @@ export default function App() {
           <div>
             <h1>Satellite Change Detection</h1>
             <div className="sub">
-              TRACK&nbsp;A · AERIAL 0.5&nbsp;M/PX · <b>ONNX · CPU</b>
+              {tab === "sentinel2" ? (
+                <>
+                  TRACK&nbsp;B · SENTINEL-2 10&nbsp;M/PX · <b>ONNX · CPU</b>
+                </>
+              ) : (
+                <>
+                  TRACK&nbsp;A · AERIAL 0.5&nbsp;M/PX · <b>ONNX · CPU</b>
+                </>
+              )}
             </div>
           </div>
         </div>
         <nav className="nav">
           <button className={`tab ${tab === "curated" ? "on" : ""}`} onClick={() => setTab("curated")}>
-            Curated
+            Aerial
+          </button>
+          <button
+            className={`tab ${tab === "sentinel2" ? "on" : ""}`}
+            onClick={() => setTab("sentinel2")}
+          >
+            Sentinel-2
           </button>
           <button className={`tab ${tab === "card" ? "on" : ""}`} onClick={() => setTab("card")}>
             Model card
@@ -127,6 +148,8 @@ export default function App() {
 
       {tab === "card" ? (
         <ModelCard />
+      ) : tab === "sentinel2" ? (
+        <Sentinel2View aois={s2} />
       ) : (
         <div className="body">
           <aside className="rail">

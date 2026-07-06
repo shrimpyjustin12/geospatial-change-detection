@@ -1,4 +1,4 @@
-import type { CuratedPair, ModelSummary, PredictResult } from "./types";
+import type { CuratedPair, ModelSummary, PredictResult, Sentinel2AOI } from "./types";
 
 // Same-origin in production (FastAPI serves this build); vite dev proxies /api to :7860.
 const BASE = "";
@@ -28,4 +28,9 @@ export const api = {
   },
   imageUrl: (pairId: string, which: "before" | "after") =>
     `${BASE}/api/curated/${pairId}/${which}.png`,
+
+  // Sentinel-2 (Track B): baked results only — a plain GET list, no predict call.
+  sentinel2: () => getJSON<Sentinel2AOI[]>("/api/sentinel2"),
+  sentinel2ImageUrl: (aoiId: string, which: "before" | "after" | "overlay") =>
+    `${BASE}/api/sentinel2/${aoiId}/${which}.png`,
 };

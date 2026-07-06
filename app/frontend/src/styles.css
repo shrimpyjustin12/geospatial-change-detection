@@ -294,6 +294,7 @@ body {
   min-width: 0;
 }
 .scene .meta .t {
+  display: block; /* required for overflow/ellipsis to clip long titles (S2 sites) */
   font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
@@ -1002,7 +1003,8 @@ input[type="range"]::-moz-range-thumb {
   body {
     overflow: auto;
   }
-  .body {
+  .body,
+  .s2-body {
     flex-direction: column;
   }
   .rail {
@@ -1013,4 +1015,115 @@ input[type="range"]::-moz-range-thumb {
   .viewer {
     min-height: 62vh;
   }
+}
+
+/* ============================================================================
+   Sentinel-2 (Track B) tab
+   ========================================================================== */
+.s2-honesty {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 20px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: linear-gradient(90deg, rgba(63, 208, 230, 0.06), transparent 70%);
+  border-bottom: 1px solid var(--line);
+}
+.s2-honesty .bicon {
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.4;
+  flex: none;
+}
+.s2-honesty b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.s2-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* locator map */
+.s2-locator {
+  height: 188px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: #070a10;
+  overflow: hidden;
+  position: relative;
+}
+.s2-locator .maplibregl-canvas {
+  cursor: default;
+}
+.s2-pin {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: rgba(63, 208, 230, 0.35);
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 0 8px rgba(63, 208, 230, 0.4);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+.s2-pin:hover {
+  transform: scale(1.2);
+}
+.s2-pin.on {
+  width: 15px;
+  height: 15px;
+  background: var(--signal);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 12px rgba(255, 140, 80, 0.7);
+}
+
+.s2-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* acquisitions block — a compact readout with left-aligned date/text values */
+.s2-acq {
+  font-family: var(--mono);
+}
+.s2-acq .row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+.s2-acq .row:last-child {
+  border-bottom: 0;
+}
+.s2-acq .k {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex: none;
+}
+.s2-acq .v {
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.s2-acq .v small {
+  font-size: 10.5px;
+  color: var(--text-dim);
 }

@@ -27,6 +27,7 @@ interface Props {
   showOverlay: boolean;
   loading?: boolean;
   legendLabel?: string;
+  gsdLabel?: string; // corner GSD chip; defaults to the aerial track's 0.5 m/px
 }
 
 // Cover-fit: fill the whole stage edge-to-edge (no letterbox voids), cropping any overflow. The
@@ -89,6 +90,7 @@ export default function CompareView({
   showOverlay,
   loading = false,
   legendLabel,
+  gsdLabel = "SOURCE GSD 0.5 m/px",
 }: Props) {
   const beforeDiv = useRef<HTMLDivElement>(null);
   const afterDiv = useRef<HTMLDivElement>(null);
@@ -221,7 +223,7 @@ export default function CompareView({
       <div className="hud chip legendchip">
         <span className="sq" /> CHANGE MASK{legendLabel ? ` · ${legendLabel}` : ""}
       </div>
-      <div className="hud chip gsd">SOURCE GSD 0.5&nbsp;m/px</div>
+      <div className="hud chip gsd">{gsdLabel}</div>
 
       <div
         className="swipe-divider"
