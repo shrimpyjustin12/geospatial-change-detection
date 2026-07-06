@@ -1,0 +1,52 @@
+# Track B · OSCD (Sentinel-2, RGB+NIR) — Siamese-SegFormer (smp MiT-b0, ImageNet-pretrained, 4-band).
+# The pretrained encoder is the point: OSCD's train split is tiny (~135 tiles), so ImageNet features
+# curb overfitting vs the from-scratch fc_siam_diff baseline. smp adapts the first conv 3->4 channels
+# from the staged MiT-b0 ImageNet weights (offline). SINGLE-GPU (ddp:false) like the baseline.
+run_id: oscd_s2_segformer
+seed: 1337
+
+data:
+  name: oscd
+  root: ${WORK}/sat-change-detection/data/oscd
+  tile_size: 256
+  num_workers: 4
+  bands: [R, G, B, NIR]
+
+model:
+  name: siamese_segformer
+  encoder: mit_b0            # smallest MiT — compact, pretrained ImageNet weights staged (M2)
+  in_channels: 4            # RGB+NIR; smp patches the first conv 3->4
+  fusion: diff
+  out_channels: 1
+  pretrained: true
+  encoder_weights: imagenet
+  decoder_dim: 256
+  dropout: 0.1
+
+loss:
+  type: bce_dice
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 100
+  batch_size: 16
+  lr: 0.0001               # lower LR for a pretrained encoder (vs 1e-3 for the from-scratch baseline)
+  lr_reference_batch: 16   # single-GPU: no LR scaling
+  weight_decay: 0.01
+  optimizer: adamw
+  scheduler: cosine
+  warmup_steps: 50
+  amp: true
+  ddp: false               # SINGLE-GPU — do not revert to 4-GPU DDP for OSCD
+  grad_checkpointing: false
+  ckpt_every_min: 30
+  resume_if_exists: true
+
+eval:
+  threshold: 0.5
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard
+  log_dir: ${WORK}/sat-change-detection/results

@@ -1,0 +1,50 @@
+# Track B · OSCD SegFormer — SMOKE. Validates the 4-band pretrained path end-to-end, including the
+# OFFLINE MiT-b0 ImageNet load + 3->4 channel first-conv patch on a no-egress GPU node (the risky
+# bit — smp silently falls back to a network URL on cache miss, which fails offline). pretrained:true
+# is intentional here so the smoke actually exercises that load.
+run_id: oscd_s2_segformer_smoke
+seed: 1337
+
+data:
+  name: oscd
+  root: ${WORK}/sat-change-detection/data/oscd
+  tile_size: 256
+  num_workers: 1
+  bands: [R, G, B, NIR]
+  limit_batches: 2
+  split_for_smoke: val
+
+model:
+  name: siamese_segformer
+  encoder: mit_b0
+  in_channels: 4
+  fusion: diff
+  out_channels: 1
+  pretrained: true          # exercise the offline pretrained load + 4-band conv patch
+  encoder_weights: imagenet
+  decoder_dim: 64
+
+loss:
+  type: bce_dice
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  epochs: 1
+  max_steps: 4
+  batch_size: 2
+  lr: 0.0001
+  optimizer: adamw
+  scheduler: none
+  amp: true
+  ddp: false
+  ckpt_every_min: 9999
+  resume_if_exists: false
+
+eval:
+  threshold: 0.5
+  metrics: [precision, recall, f1, iou]
+
+logging:
+  backend: tensorboard
+  log_dir: ${WORK}/sat-change-detection/results
