@@ -10,10 +10,13 @@ Endpoints
     GET  /api/curated           curated before/after pairs (id, title, size, ...)
     GET  /api/curated/{id}/{which}.png   the before/after image
     POST /api/predict           {pair_id, model_id} -> change overlay (PNG data URL) + stats
+    GET  /api/sentinel2         curated Sentinel-2 AOIs (baked results only; no runtime inference)
+    GET  /api/sentinel2/{id}/{which}.png   the before / after / overlay image
 
 Config via env:
     BUNDLES_DIR   dir of exported model bundles     (default: app/backend/models)
     CURATED_DIR   dir of curated pairs + manifest    (default: app/backend/data/curated)
+    SENTINEL2_DIR dir of baked Sentinel-2 AOIs       (default: app/backend/data/sentinel2)
     FRONTEND_DIST built React app to serve at /      (default: app/frontend/dist)
     HF_BUNDLE_REPO  optional HF model repo to pull bundles from at startup (id or url)
 """
@@ -33,10 +36,12 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from inference import BundleRegistry
 from pydantic import BaseModel
+from sentinel2 import Sentinel2Registry
 
 _HERE = Path(__file__).resolve().parent
 BUNDLES_DIR = Path(os.environ.get("BUNDLES_DIR", _HERE / "models"))
 CURATED_DIR = Path(os.environ.get("CURATED_DIR", _HERE / "data" / "curated"))
+SENTINEL2_DIR = Path(os.environ.get("SENTINEL2_DIR", _HERE / "data" / "sentinel2"))
 FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST", _HERE.parent / "frontend" / "dist"))
 
 
@@ -61,6 +66,7 @@ def _maybe_pull_bundles() -> None:
 _maybe_pull_bundles()
 models = BundleRegistry(BUNDLES_DIR)
 curated = CuratedRegistry(CURATED_DIR)
+sentinel2 = Sentinel2Registry(SENTINEL2_DIR)
 _predict_cache: dict[tuple[str, str], dict[str, Any]] = {}
 # Curated pairs + models are fixed, so predictions are deterministic. tile+stitch inference is a few
 # seconds of CPU per scene (DINOv2), so we bake predictions to disk (the deploy plan): the file is
@@ -144,6 +150,7 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "models": models.ids(),
         "n_curated": len(curated.pairs),
+        "n_sentinel2": len(sentinel2.aois),
         "bundles_dir": str(BUNDLES_DIR),
     }
 
@@ -182,6 +189,26 @@ def predict(req: PredictRequest) -> dict[str, Any]:
     if req.pair_id not in curated.pairs:
         raise HTTPException(404, f"unknown pair {req.pair_id!r}")
     return _compute_prediction(req.pair_id, req.model_id)
+
+
+# --- Sentinel-2 (Track B): curated AOIs served ENTIRELY from the baked cache --------------------
+# No runtime inference, no STAC, no GPU — the OSCD 4-band predictions were computed offline by
+# build_sentinel2.py (aerial models do NOT transfer to 10 m, so this tab uses the Sentinel-2-native
+# OSCD model only). The runtime never imports pystac/rasterio; it just serves PNGs + baked stats.
+@app.get("/api/sentinel2")
+def list_sentinel2() -> list[dict[str, Any]]:
+    return sentinel2.list()
+
+
+@app.get("/api/sentinel2/{aoi_id}/{which}.png")
+def sentinel2_image(aoi_id: str, which: str) -> FileResponse:
+    try:
+        path = sentinel2.image_path(aoi_id, which)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(404, f"no {which} image for Sentinel-2 AOI {aoi_id!r}") from exc
+    if not path.exists():
+        raise HTTPException(404, f"no {which} image for Sentinel-2 AOI {aoi_id!r}")
+    return FileResponse(path, media_type="image/png")
 
 
 # --- static frontend (mounted LAST so the /api/* routes above take precedence) ---------------
