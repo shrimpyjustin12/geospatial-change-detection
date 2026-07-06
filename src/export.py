@@ -355,6 +355,17 @@ def _metrics_card(
         ]
     else:
         lines += ["", "_No eval summary found for this run — metrics pending._"]
+    if str(cfg["data"].get("name")) == "oscd":
+        lines += [
+            "",
+            "## Honest framing — read this",
+            "",
+            "Sentinel-2 is a **coarse 10 m/px** domain. This model is **directionally correct on "
+            "large real-world change, not a high-accuracy detector** (test F1 ~0.45). OSCD is tiny "
+            "(24 scenes) and genuinely hard, so scores are modest by design — not dressed up. The "
+            "high-resolution **aerial LEVIR-CD track is the high-accuracy showcase**; this "
+            "Sentinel-2 track exists to run on any real-world location, plainly caveated.",
+        ]
     verdict = "PASS" if parity["passed"] else "FAIL"
     lines += [
         "",

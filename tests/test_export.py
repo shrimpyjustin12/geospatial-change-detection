@@ -140,7 +140,11 @@ def test_oscd_bundle_preprocessing_and_card(tmp_path):
     assert "10000" in pp["value_range"]  # Sentinel-2 reflectance scaling documented
 
     card = (tmp_path / "b" / "metrics_card.md").read_text()
-    assert "OSCD" in card and "LEVIR" not in card
+    assert "OSCD" in card
+    # honest framing must be stated plainly (10 m, modest/directional, aerial is the accuracy track)
+    assert "10 m" in card
+    assert "directionally correct" in card
+    assert "high-accuracy showcase" in card
 
 
 def test_parity_failure_raises(tmp_path, monkeypatch):
