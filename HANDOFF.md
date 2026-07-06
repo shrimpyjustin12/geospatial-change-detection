@@ -7,8 +7,10 @@ dir) is authoritative for all Leonardo/HPC specifics.
 - **Project:** a satellite **change-detection** system (high-res aerial + Sentinel-2) with a
   first-class evaluation harness and a deployed web demo. Full spec: **[PRD.md](PRD.md)**.
 - **Repo:** GitHub, branch `main` (exact URL + owner in the local, gitignored `DECISIONS.md`).
-- **Local, gitignored notes:** `DECISIONS.md` (resolved cluster placeholders + every decision) and
-  `experiments/LOG.md` (run trail). Keep both current. Injected memory also carries key facts.
+- **Notes:** `DECISIONS.md` (resolved cluster placeholders + every decision) is **local & gitignored**
+  — never commit it. `experiments/LOG.md` (run trail) is **TRACKED/committed**, so it must stay
+  identity-clean (job IDs, partition names, configs, git SHAs, outcomes only — NO allocation account /
+  absolute `$WORK`/`$SCRATCH` paths / username). Keep both current. Injected memory also carries key facts.
 
 ## Milestone status
 - **M0 — done.** Repo skeleton, CI, LEVIR-CD staged (637 pairs), container def drafted.
@@ -249,8 +251,10 @@ a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the 
   a little letterbox back for a guaranteed ≤MAX_SCALE display scale.
 
 ## Roadmap after M4
-- **M5 — curated Sentinel-2 (Track-B) mode — REVISED SCOPE (decided with the reviewer; simpler than the
-  PRD §10.2 fully-live plan).** Add a CURATED Sentinel-2 mode to the SAME Space: a handful of real-world
+- **M5 — curated Sentinel-2 (Track-B) mode — IN PROGRESS: Phases 1–3 DONE, Phase 4–5 remaining (both
+  before Gate 2). Full status + exact next steps in the "## M5 — status" section below.** REVISED SCOPE
+  (decided with the reviewer; simpler than the
+  PRD §10.2 fully-live plan). Add a CURATED Sentinel-2 mode to the SAME Space: a handful of real-world
   AOIs whose predictions are PRECOMPUTED and served instantly from cache, exactly like the curated aerial
   mode. Free-tier, CPU-only — **no GPU, no runtime/live inference, no runtime STAC, no latency caps.**
   - **Core work (STILL REQUIRED):** train a Sentinel-2-native model on **OSCD** on Leonardo (Track-B, PRD
@@ -275,10 +279,91 @@ a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the 
 - **M6 — xBD disaster track** (multi-class building damage, xView2 weighted-F1 metric). The hardest and
   latest milestone.
 
+## M5 — status (Phases 1–3 DONE 2026-07-06; Phase 4–5 remaining, both BEFORE Gate 2)
+
+**Gate 1 (before first full training) — PASSED, maintainer approved.** Gate 2 unchanged (see bottom).
+
+### Phases 1–3 — DONE (OSCD Track-B trained, evaluated, exported)
+- **New code (all TDD, CI-green, on `main`):**
+  - `src/data/oscd.py` — `TiledOSCD`: 4-band **RGB+NIR = S2 B04/B03/B02/B08**, torchgeo-free (torchgeo
+    0.8.1 IS on the cluster but its import hangs on the login node — we read files directly). Variable
+    per-scene **edge-aligned tiling** (OSCD cities differ in size), robust `{0,255}/{1,2}/{0,1}` mask
+    binarize, `scene_id(idx)` for the eval per-scene breakdown, per-band norm stats baked in
+    (`OSCD_MEAN`/`OSCD_STD`, computed on the staged train split; NIR 0.20 > RGB ~0.13).
+  - `src/data/__init__.py` — `build_dataset(dcfg, split, augment)` dispatch on `data.name`
+    (`levircd`|`oscd`); wired into `train.py` + `evaluate.py` (both previously hard-coded `TiledLEVIRCD`).
+  - `configs/oscd_s2{,_segformer}{,_smoke}.yaml` — Track-B. **SINGLE-GPU (`ddp:false`) is intentional —
+    do NOT revert to the 4-GPU DDP default** (24 pairs → large effective batch hurts convergence).
+  - `slurm/{smoke,train}_1gpu.sbatch` — single-GPU (the 4-GPU `train.sbatch`/`smoke.sbatch` are Track-A).
+  - `src/export.py` — 4-band bundle (band order `[R,G,B,NIR]`, ÷10000 S2 scaling, OSCD norm stats, and an
+    **honest-framing** model card). `src/evaluate.py` — `scene_id`-based per-scene grouping + RGB-slice gallery.
+- **OSCD staging (login node):** `scripts/stage_data.sh oscd` — curl torchgeo 0.8.1's Onera archive URLs,
+  **md5-verified**. **TLS gotcha:** the Train Labels host `partage.mines-telecom.fr` serves a cert that
+  doesn't match its hostname → we use `partage.imt.fr` (same Nextcloud share token, valid cert; TLS stays
+  ON). Normalized to `<root>/<city>/{imgs_*_rect, cm/cm.png}` + `train.txt`/`test.txt`. **24 cities: 14
+  train / 10 test; val = the last 2 train cities (held out, scene-disjoint).** `scripts/smoke_load_oscd.py`
+  = load smoke + recomputes the D2 norm stats.
+- **Results (single-GPU, 100 ep):** baseline **`fc_siam_diff` (0.83M) test F1 0.453 / IoU 0.293** (thr
+  selected on val→test); `siamese_segformer` mit_b0 4-band (ImageNet-pretrained) **F1 0.413** →
+  **ImageNet transfers poorly to 10 m multispectral; the from-scratch baseline is the demo model.** Jobs:
+  train 48688859 (baseline) / 48689122 (segformer); eval 48690012. Bundle **exported to
+  `bundles/oscd_s2_baseline/`** (4-band ONNX, parity **1.4e-6** on the real checkpoint; card carries the
+  honest 10 m framing). Trained checkpoint: cluster `results/oscd_s2_baseline/checkpoints/best.pt`; a local
+  copy is `ckpts_local/oscd_s2_baseline_best.pt` (gitignored). Reproduce the bundle:
+  `WORK=/tmp/w python -m src.export --config configs/oscd_s2.yaml --checkpoint <best.pt> --out-dir bundles`.
+- **Env:** the repo's own `.venv` was rebuilt as **Python 3.12** with the CPU stack (torch 2.5.1, rasterio,
+  onnx/onnxruntime, ruff/mypy/pytest) — it had been an empty py3.14. Build-time STAC deps installed locally
+  (`pystac-client`, `planetary-computer`, `rioxarray`). CI installs only `.[dev]` + CPU torch, so the
+  rasterio/onnx-gated OSCD tests SKIP in CI (they run locally).
+
+### Phase 4 — build_sentinel2.py offline bake (NOT built yet — do this first in the fresh session)
+Build-time ONLY (no runtime STAC/torch/GPU). Fetch the 5 AOIs from Planetary Computer STAC, co-register
+(**trivial — each AOI's before/after are on the SAME MGRS tile**, so identical UTM grid), make RGB display
+PNGs (percentile-stretch B04/B03/B02), run the OSCD ONNX **offline** on 4-band standardized input, threshold
+(bundle's 0.469), compute stats, render the overlay.
+- **KEY FINDING — the S2 bake MUST be a SEPARATE offline pipeline:** `app/backend/inference.py` is
+  **hard-coded RGB (3-band)** — `Bundle.mean/std` do `reshape(3,1,1)` and `_to_input` does `.convert("RGB")`
+  — so the OSCD 4-band model **cannot** run through its `predict`. Write your own 4-band tile-stitch (tile at
+  the bundle's `tiling.tile_size`=256, same as the eval harness). **`inference.py._overlay_png(mask, out_size)`
+  IS band-agnostic and reusable — import it** for the amber-fill+outline overlay.
+- Emit per-AOI `before.png`/`after.png`/`overlay.png` + `manifest.json` + `_predictions.json` under
+  gitignored `app/backend/data/sentinel2/`. **Cache-entry shape MUST match `inference.py.predict`'s return:**
+  `{overlay_png, threshold, is_placeholder:false, stats{changed_fraction, changed_percent,
+  mean_confidence_changed, mean_confidence_overall, changed_pixels, total_pixels}, elapsed_ms, input_size,
+  n_tiles, pair_id, model_id}`.
+- **The 5 confirmed AOIs (all verified low-cloud S2 L2A; exact acquisitions; same tile → aligned):**
+
+  | id | title | before | after | tile | center lat,lon |
+  |---|---|---|---|---|---|
+  | dubai_deira | Dubai Deira Islands reclamation | 2016-03-03 (0.2%) | 2023-04-28 (0.0%) | T40RCP | 25.30, 55.34 |
+  | gerd_reservoir | Grand Ethiopian Renaissance Dam | 2020-02-14 (0.0%) | 2023-12-25 (0.0%) | T36PYT | 11.21, 35.09 |
+  | beijing_daxing | Beijing Daxing airport | 2016-10-10 (0.8%) | 2019-11-19 (0.8%) | T50SMJ | 39.51, 116.41 |
+  | bhadla_solar | Bhadla Solar Park | 2017-12-17 (0.0%) | 2021-12-16 (0.0%) | T43RBL | 27.54, 72.02 |
+  | egypt_newcapital | New Administrative Capital, Egypt | 2016-08-27 (0.7%) | 2023-08-26 (0.0%) | T36RUU | 30.01, 31.75 |
+
+  Direction chosen with the maintainer: **arid/engineered, crispest imagery** (reclamation / reservoir /
+  airport / solar / desert city) — no cloudy tropical scenes. Feasibility probe: `scratchpad/stac_probe.py`.
+
+### Phase 5 — S2 backend routes + Sentinel-2 tab (NOT built yet — after Phase 4)
+- Backend `app/backend/sentinel2.py` registry + `/api/sentinel2` routes serving the **baked results only**
+  (NO runtime inference/STAC). **Keep STAC deps OUT of `app/backend/requirements.txt`** — the runtime image
+  stays STAC-free.
+- Frontend `Sentinel2View.tsx` — MapLibre pins at the AOI centers → clicking loads before/after + the baked
+  overlay + stats into **`CompareView` (fully generic — reuse as-is)**. New "Sentinel-2" tab in `App.tsx`.
+  Single OSCD model → **no model dropdown** on this tab.
+- **HONESTY (maintainer directive — state PLAINLY, no dressing up):** label **"Sentinel-2 · 10 m"**, note
+  it's a **coarser domain** than the aerial track, that these are **curated real-world examples**, and
+  surface each pair's **acquisition dates + cloud %**. The aerial LEVIR-CD track stays the high-accuracy
+  showcase. (The OSCD model card already states this framing; the tab must too.)
+- Basemap: lean self-hosted/minimal to keep the app's no-CDN-at-runtime ethos (revisit at Gate 2).
+
+**Plan doc (local, uncommitted):** `docs/superpowers/plans/2026-07-05-m5-curated-sentinel2.md`.
+
 ## Working conventions
 - **Smoke before full** (CPU serial or `boost_qos_dbg`). **PAUSE and ask the maintainer before the first
-  full multi-GPU submission — and (M4+) before deploying/making public the HF Space or pushing weight
-  bundles to a public HF Model repo** (outward-facing, hard to reverse).
+  full training submission — and (M4+) before modifying/redeploying/making public the HF Space or pushing
+  weight bundles to a public HF Model repo** (outward-facing, hard to reverse). **M5 Gate 2 specifically:
+  the maintainer eyeballs the new Sentinel-2 tab on a PRIVATE preview before it goes live.**
 - Checkpoint every ~30 min + `--resume-if-exists` so a walltime cut never loses progress.
 - Commit granularly (maintainer identity, no AI/tool attribution); keep `DECISIONS.md` +
   `experiments/LOG.md` current; confirm CI is green after each push.
