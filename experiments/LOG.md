@@ -47,3 +47,4 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-06 | M5 | SegFormer mit_b0 4-band smoke (offline pretrained load) | 48688860 | oscd_s2_segformer_smoke.yaml | e3bcb0d | COMPLETED 2:06; offline mit_b0 3->4 patch OK, no net fallback |
 | 2026-07-06 | M5 | FULL fc_siam_diff OSCD (single-GPU, 100 ep) | 48688859 | oscd_s2.yaml | e3bcb0d | COMPLETED 5:39; val best **F1=0.318** |
 | 2026-07-06 | M5 | FULL SegFormer mit_b0 4-band OSCD (single-GPU, 100 ep) | 48689122 | oscd_s2_segformer.yaml | e3bcb0d | COMPLETED 4:29; val best F1=0.280 (baseline wins — ImageNet transfers poorly to 10 m MSI) |
+| 2026-07-06 | M5 | Test eval both (thr-on-val→test), per-scene n=10 | 48690012 | evaluate oscd_s2{,_segformer} | 03c65c2 | baseline **F1=0.453** IoU=0.293 P=0.492 R=0.420 AP=0.413; segformer F1=0.413 IoU=0.260 AP=0.425 → **baseline is the demo model** |
