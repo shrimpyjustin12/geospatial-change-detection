@@ -101,6 +101,14 @@ def test_val_holdout_is_deterministic(tmp_path: Path) -> None:
     assert TiledOSCD(root=tmp_path, split="test", tile_size=32).cities == ["t0"]
 
 
+def test_scene_id_maps_tiles_to_cities(tmp_path: Path) -> None:
+    # Eval harness groups tiles into scenes via scene_id; OSCD has variable tiles per city.
+    write_oscd_fixture(tmp_path, train=[], test=["c0", "c1"], size=(64, 64))  # 2x2=4 tiles each
+    ds = TiledOSCD(root=tmp_path, split="test", tile_size=32)
+    assert len(ds) == 8
+    assert [ds.scene_id(i) for i in range(len(ds))] == [0, 0, 0, 0, 1, 1, 1, 1]
+
+
 def test_mask_encoding_1_2(tmp_path: Path) -> None:
     # OSCD's original {1,2} encoding (1=no-change, 2=change) must map to {0,1}, not all-ones.
     write_oscd_fixture(tmp_path, train=[], test=["enc"], size=(32, 32), mask_vals=(1, 2))

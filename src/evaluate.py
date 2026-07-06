@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +92,7 @@ def _run_pass(
     autocast_dtype: torch.dtype | None,
     *,
     threshold: float | None,
-    per_image: int,
+    scene_id_of: Callable[[int], int],
     mean: torch.Tensor,
     std: torch.Tensor,
     gallery_k: int,
@@ -129,7 +130,7 @@ def _run_pass(
             fn = (~pred & target).sum(dim=(1, 2, 3))
             gt_pos = target.sum(dim=(1, 2, 3))
             for i in range(images.shape[0]):
-                scene = (gidx + i) // per_image
+                scene = scene_id_of(gidx + i)
                 acc = scene_counts.setdefault(scene, [0, 0, 0])
                 acc[0] += int(tp[i])
                 acc[1] += int(fp[i])
@@ -137,8 +138,9 @@ def _run_pass(
                 if gallery_k > 0 and int(gt_pos[i]) > 0:
                     m = prf1_iou(int(tp[i]), int(fp[i]), int(fn[i]))
                     if len(gallery) < gallery_k or m["f1"] < worst_kept_f1:
-                        a = _denormalize(images[i, 0].cpu(), mean, std)
-                        b = _denormalize(images[i, 1].cpu(), mean, std)
+                        # Display/diagnose on RGB only (first 3 bands); OSCD adds a 4th (NIR).
+                        a = _denormalize(images[i, 0, :3].cpu(), mean[:3], std[:3])
+                        b = _denormalize(images[i, 1, :3].cpu(), mean[:3], std[:3])
                         p1 = pred[i].cpu()
                         g1 = target[i].cpu()
                         stats = _tile_stats(a, b, p1, g1)
@@ -284,7 +286,7 @@ def evaluate_model(
             device,
             autocast_dtype,
             threshold=None,
-            per_image=sel_ds.per_image,
+            scene_id_of=sel_ds.scene_id,
             mean=sel_ds.mean,
             std=sel_ds.std,
             gallery_k=0,
@@ -309,7 +311,7 @@ def evaluate_model(
         device,
         autocast_dtype,
         threshold=op_threshold,
-        per_image=dataset.per_image,
+        scene_id_of=dataset.scene_id,
         mean=dataset.mean,
         std=dataset.std,
         gallery_k=gallery_k,

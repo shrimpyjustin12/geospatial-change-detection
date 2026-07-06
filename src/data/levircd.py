@@ -60,6 +60,11 @@ class TiledLEVIRCD(Dataset):
     def __len__(self) -> int:
         return len(self.base) * self.per_image
 
+    def scene_id(self, idx: int) -> int:
+        """Source-scene index for a flat tile index (LEVIR: fixed ``per_image`` tiles per scene).
+        Used by the eval harness to group tiles into scenes for the per-scene breakdown."""
+        return idx // self.per_image
+
     def _load_scene(self, img_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         if img_idx == self._cache_idx and self._cache is not None:
             return self._cache

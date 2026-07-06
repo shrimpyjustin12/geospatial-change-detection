@@ -44,3 +44,6 @@ IDs, config, git SHA, outcome. Keep it human-readable; never silently re-run.
 | 2026-07-05 | M5 | TiledOSCD load smoke (serial) — 4-band shapes + per-band stats (D2) | srun serial | smoke_load_oscd.py | 05e068e | train 12c/135t, val 2c/15t, test 10c/69t; stats set |
 | 2026-07-05 | M5 | CPU logic smoke (lrd_all_serial) | 48640880 | oscd_s2_smoke.yaml | 05e068e | COMPLETED 47s; world=1 device=cpu; loop/eval/ckpt OK |
 | 2026-07-05 | M5 | Single-GPU GPU smoke (boost_qos_dbg) | 48640927 | oscd_s2_smoke.yaml | 7da3a8d | COMPLETED 2:03; world=1 device=cuda:0; bf16 AMP OK |
+| 2026-07-06 | M5 | SegFormer mit_b0 4-band smoke (offline pretrained load) | 48688860 | oscd_s2_segformer_smoke.yaml | e3bcb0d | COMPLETED 2:06; offline mit_b0 3->4 patch OK, no net fallback |
+| 2026-07-06 | M5 | FULL fc_siam_diff OSCD (single-GPU, 100 ep) | 48688859 | oscd_s2.yaml | e3bcb0d | COMPLETED 5:39; val best **F1=0.318** |
+| 2026-07-06 | M5 | FULL SegFormer mit_b0 4-band OSCD (single-GPU, 100 ep) | 48689122 | oscd_s2_segformer.yaml | e3bcb0d | COMPLETED 4:29; val best F1=0.280 (baseline wins — ImageNet transfers poorly to 10 m MSI) |

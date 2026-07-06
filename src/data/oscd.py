@@ -124,6 +124,11 @@ class TiledOSCD(Dataset):
     def __len__(self) -> int:
         return len(self.index)
 
+    def scene_id(self, idx: int) -> int:
+        """Source-city index for a flat tile index (OSCD has variable tiles per city). Used by the
+        eval harness to group tiles into scenes for the per-scene breakdown."""
+        return self.index[idx][0]
+
     # ---- file resolution -------------------------------------------------------------------
     def _date_dir(self, city: str, which: int) -> Path:
         """Directory of per-band tifs for date ``which`` (1 or 2). Prefer the co-registered
