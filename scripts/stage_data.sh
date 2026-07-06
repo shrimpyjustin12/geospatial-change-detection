@@ -108,59 +108,93 @@ stage_levircd() {
 OSCD_CANON_TRAIN="aguasclaras,bercy,bordeaux,nantes,paris,rennes,saclay_e,abudhabi,cupertino,pisa,beihai,hongkong,beirut,mumbai"
 OSCD_CANON_TEST="brasilia,chongqing,dubai,lasvegas,milano,montpellier,norcia,rio,saclay_w,valencia"
 
+# OSCD source: taken from torchgeo 0.8.1's OSCD dataset (the Onera partage.imt.fr distribution).
+# Three Nextcloud archives (not on HuggingFace) — we curl them directly and verify md5.
+# NOTE: torchgeo lists the Train Labels URL on partage.mines-telecom.fr, whose TLS cert does not
+# match its hostname; the same share token is served (valid cert) from partage.imt.fr, so we use
+# that host for all three and keep TLS verification on.
+OSCD_IMAGES_URL="https://partage.imt.fr/index.php/s/gKRaWgRnLMfwMGo/download"
+OSCD_TRAIN_URL="https://partage.imt.fr/index.php/s/2D6n03k58ygBSpu/download"
+OSCD_TEST_URL="https://partage.imt.fr/index.php/s/gpStKn4Mpgfnr63/download"
+OSCD_IMAGES_MD5="c50d4a2941da64e03a47ac4dec63d915"
+OSCD_TRAIN_MD5="4d2965af8170c705ebad3d6ee71b6990"
+OSCD_TEST_MD5="8177d437793c522653c442aa4e66c617"
+OSCD_IMAGES_WRAP="Onera Satellite Change Detection dataset - Images"
+OSCD_TRAIN_WRAP="Onera Satellite Change Detection dataset - Train Labels"
+OSCD_TEST_WRAP="Onera Satellite Change Detection dataset - Test Labels"
+
+curl_fetch() {  # <url> <dest>
+  [ -f "$2" ] && { log "present: $(basename "$2")"; return; }
+  log "downloading $(basename "$2") ..."
+  # -sS silences the progress meter but keeps errors; connect-timeout avoids indefinite hangs.
+  curl -fL -sS --connect-timeout 30 --retry 3 --retry-delay 5 -o "${2}.part" "$1"
+  mv "${2}.part" "$2"
+}
+
 stage_oscd() {
   # OSCD (Onera Satellite Change Detection) — Sentinel-2, 24 pairs (14 train / 10 test), 13 bands.
-  # SOURCE + CHECKSUMS ARE RECONCILED AT STAGING (D1 / plan Task 8): torchgeo's pinned version has
-  # no OSCD downloader, so point OSCD_REPO/OSCD_REV/OSCD_ARCHIVES at the confirmed HF dataset mirror
-  # of the Onera distribution. md5s are OPTIONAL — when unset, sha256 is recorded on first run;
-  # pin OSCD_MD5S afterwards for idempotent verification.
+  # curl the 3 archives -> md5 verify -> sha256 record -> extract -> normalize the wrapper layout
+  # into <root>/<city>/{imgs_*_rect, dates.txt, cm/cm.png} (what TiledOSCD reads) -> derive
+  # train.txt/test.txt from the Train/Test Labels folders (authoritative split; canonical fallback).
+  command -v curl >/dev/null || die "curl not found (needed for OSCD Nextcloud archives)"
   local root="${DATA_ROOT}/oscd"
   local arc="${root}/_archives"
+  local raw="${root}/_raw"
   local manifest="${CHECKSUM_DIR}/oscd.sha256"
-  local repo="${OSCD_REPO:?set OSCD_REPO to the confirmed OSCD HF dataset mirror (D1 / plan Task 8)}"
-  local rev="${OSCD_REV:-main}"
-  local archives md5s
-  read -r -a archives <<< "${OSCD_ARCHIVES:-images.zip train_labels.zip test_labels.zip}"
-  read -r -a md5s <<< "${OSCD_MD5S:-}"
+  mkdir -p "$arc"
 
-  fetch_all "$repo" "$rev" "$arc" "${archives[@]}"
+  local names=("Images.zip" "Train Labels.zip" "Test Labels.zip")
+  local urls=("$OSCD_IMAGES_URL" "$OSCD_TRAIN_URL" "$OSCD_TEST_URL")
+  local md5s=("$OSCD_IMAGES_MD5" "$OSCD_TRAIN_MD5" "$OSCD_TEST_MD5")
   local i
-  for i in "${!archives[@]}"; do
-    if [ -n "${md5s[$i]:-}" ]; then
-      verify_md5 "${arc}/${archives[$i]}" "${md5s[$i]}"
-    else
-      log "md5 SKIPPED for ${archives[$i]} (set OSCD_MD5S to pin at staging)"
-    fi
-    record_or_verify_sha256 "${arc}/${archives[$i]}" "$manifest"
+  for i in "${!names[@]}"; do
+    curl_fetch "${urls[$i]}" "${arc}/${names[$i]}"
+    verify_md5 "${arc}/${names[$i]}" "${md5s[$i]}"
+    record_or_verify_sha256 "${arc}/${names[$i]}" "$manifest"
   done
 
-  for z in "${archives[@]}"; do
-    log "extracting ${z} ..."
-    unzip -q -o "${arc}/${z}" -d "$root"
+  rm -rf "$raw"; mkdir -p "$raw"
+  for i in "${!names[@]}"; do
+    log "extracting ${names[$i]} ..."
+    unzip -q -o "${arc}/${names[$i]}" -d "$raw"
   done
-  rm -rf "${arc}/.cache"
 
-  # If cities are wrapped in a single top folder (common in the Onera zips), flatten it up to $root.
-  local wrappers; wrappers=$(find "$root" -maxdepth 1 -mindepth 1 -type d ! -name '_archives' | wc -l | tr -d ' ')
-  if [ "$wrappers" = "1" ]; then
-    local wrap; wrap=$(find "$root" -maxdepth 1 -mindepth 1 -type d ! -name '_archives')
-    if [ -z "$(find "$wrap" -maxdepth 1 -name 'imgs_*' -o -maxdepth 1 -name 'cm')" ]; then
-      log "flattening wrapper dir: $(basename "$wrap")"
-      find "$wrap" -maxdepth 1 -mindepth 1 -exec mv -t "$root" {} +
-      rmdir "$wrap" 2>/dev/null || true
-    fi
-  fi
+  # Authoritative split = the region folders under each Labels wrapper (canonical fallback).
+  local train_csv test_csv
+  train_csv=$(find "$raw/$OSCD_TRAIN_WRAP" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | sort | paste -sd, -)
+  test_csv=$(find "$raw/$OSCD_TEST_WRAP" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | sort | paste -sd, -)
+  [ -n "$train_csv" ] || train_csv="$OSCD_CANON_TRAIN"
+  [ -n "$test_csv" ]  || test_csv="$OSCD_CANON_TEST"
 
-  # Ensure split lists at the root (TiledOSCD reads train.txt/test.txt); write canonical if absent.
-  [ -f "${root}/train.txt" ] || { printf '%s\n' "$OSCD_CANON_TRAIN" > "${root}/train.txt"; log "wrote canonical train.txt (14 cities)"; }
-  [ -f "${root}/test.txt" ]  || { printf '%s\n' "$OSCD_CANON_TEST"  > "${root}/test.txt";  log "wrote canonical test.txt (10 cities)"; }
+  # Normalize: images for all regions, then merge each region's cm/ from the Labels wrappers.
+  local regdir reg wrap
+  for regdir in "$raw/$OSCD_IMAGES_WRAP"/*/; do
+    [ -d "$regdir" ] || continue
+    reg=$(basename "$regdir")
+    mkdir -p "$root/$reg"
+    mv "$regdir"/imgs_* "$regdir"/dates.txt "$root/$reg/" 2>/dev/null || true
+  done
+  for wrap in "$OSCD_TRAIN_WRAP" "$OSCD_TEST_WRAP"; do
+    for regdir in "$raw/$wrap"/*/; do
+      [ -d "$regdir" ] || continue
+      reg=$(basename "$regdir")
+      mkdir -p "$root/$reg"
+      mv "$regdir"/cm "$root/$reg/" 2>/dev/null || true
+    done
+  done
+  rm -rf "$raw"
+
+  printf '%s\n' "$train_csv" > "${root}/train.txt"
+  printf '%s\n' "$test_csv"  > "${root}/test.txt"
+  log "split: $(echo "$train_csv" | tr ',' '\n' | grep -c .) train / $(echo "$test_csv" | tr ',' '\n' | grep -c .) test cities"
 
   log "OSCD staged at: $root"
-  log "top-level entries:"; find "$root" -maxdepth 1 -mindepth 1 | sort | sed 's/^/    /'
   local ncities; ncities=$(find "$root" -maxdepth 2 -type d -name 'imgs_*' 2>/dev/null | sed 's#/imgs_[^/]*$##' | sort -u | wc -l | tr -d ' ')
   log "cities with imagery (imgs_*): ${ncities}"
-  log "NOTE (D1): verify each city has <city>/imgs_{1,2}[_rect]/B0{2,3,4,8}.tif and <city>/cm/cm.png;"
-  log "  OSCD label archives may extract into a separate subtree — move each city's cm/ under <root>/<city>/ if so."
+  local sample; sample=$(find "$root" -maxdepth 2 -type d -name 'imgs_1_rect' 2>/dev/null | head -1)
+  if [ -n "$sample" ]; then
+    log "sample city '$(basename "$(dirname "$sample")")': $(find "$sample" -name '*.tif' | wc -l | tr -d ' ') band tifs; cm=[$(ls "$(dirname "$sample")/cm" 2>/dev/null | tr '\n' ' ')]"
+  fi
 }
 
 case "$DATASET" in
