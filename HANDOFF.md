@@ -251,8 +251,9 @@ a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the 
   a little letterbox back for a guaranteed ≤MAX_SCALE display scale.
 
 ## Roadmap after M4
-- **M5 — curated Sentinel-2 (Track-B) mode — IN PROGRESS: Phases 1–3 DONE, Phase 4–5 remaining (both
-  before Gate 2). Full status + exact next steps in the "## M5 — status" section below.** REVISED SCOPE
+- **M5 — curated Sentinel-2 (Track-B) mode — COMPLETE (deployed to Hugging Face 2026-07-10; public
+  Space live + verified logged-out). Phases 1–5 all done through Gate 2. Details in the "## M5 —
+  status" section below.** REVISED SCOPE
   (decided with the reviewer; simpler than the
   PRD §10.2 fully-live plan). Add a CURATED Sentinel-2 mode to the SAME Space: a handful of real-world
   AOIs whose predictions are PRECOMPUTED and served instantly from cache, exactly like the curated aerial
@@ -279,7 +280,47 @@ a background `_prewarm` fills any gaps and re-saves. Regenerate by deleting the 
 - **M6 — xBD disaster track** (multi-class building damage, xView2 weighted-F1 metric). The hardest and
   latest milestone.
 
-## M5 — status (Phases 1–3 DONE 2026-07-06; Phase 4–5 remaining, both BEFORE Gate 2)
+## M5 — status (COMPLETE — Phases 1–5 done; deployed + verified 2026-07-10)
+
+**Gate 1 (first full training) — PASSED. Gate 2 (public deploy) — PASSED (maintainer eyeballed the
+private preview, chose to tighten Beijing, then approved push + deploy).**
+
+### Phases 4–5 — DONE (offline S2 bake + Sentinel-2 tab; deployed)
+- **`app/backend/build_sentinel2.py`** — build-time-only pipeline: fetches confirmed low-cloud S2 L2A
+  before/after pairs from Planetary Computer, co-registers (same MGRS tile → same UTM grid), harmonises
+  the BOA reflectance offset across processing baselines (≥04.00 → −1000, matching OSCD-era radiometry),
+  renders joint-stretch RGB display PNGs, runs the OSCD 4-band ONNX bundle **offline** via its own
+  tile-stitch (`inference.py` is RGB-only; `_overlay_png` reused), and bakes before/after/overlay PNGs +
+  `manifest.json` + `_predictions.json` (the exact schema `inference.py.predict` returns) under gitignored
+  `app/backend/data/sentinel2/`. `find_item` validates window **coverage** (same MGRS tile ≠ same orbit
+  swath) and falls back to the lowest-cloud covering scene that month. STAC/rasterio stay build-time deps.
+- **5 AOIs baked** (final; full table + the two coverage-driven deviations in local `DECISIONS.md`):
+  dubai_deira T40RCP 2016-03-20→2023-04-28 (13.2%; before fell back from 03-03, 0%-cover swath),
+  gerd_reservoir T36PYT 2020-02-14→2023-12-25 (8.3%), beijing_daxing T50SMJ 2016-10-10→**2020-10-04**
+  (34.6%; same-orbit R075 same-season after chosen at Gate 2 to cut Oct-vs-Nov seasonal speckle vs the
+  original 2019-11-19/43.3%), bhadla_solar **T42RYR** 2017-12-17→2021-12-16 (4.3%; moved off T43RBL —
+  park core is west of the 72°E UTM zone-42/43 boundary), egypt_newcapital T36RUU 2016-08-27→2023-08-26
+  (20.4%).
+- **`app/backend/sentinel2.py`** `Sentinel2Registry` + `GET /api/sentinel2` and
+  `/api/sentinel2/{id}/{before|after|overlay}.png` — served **entirely from the baked cache** (no runtime
+  inference/STAC/GPU). `app.py` `_maybe_pull_bundles` now `ignore_patterns=["oscd_*", ...]` so the OSCD
+  bundle (published to the Model repo as a portfolio artifact) is NOT pulled into the aerial RGB registry
+  (a 4-band model on RGB curated pairs would 500). `Dockerfile` sets `SENTINEL2_DIR`.
+- **`Sentinel2View.tsx`** — new "Sentinel-2" tab: self-hosted CC0 Natural Earth land-outline locator
+  (vendored + inlined, `assets/land-110m.json`; no runtime CDN) + a `maplibregl.Marker` per AOI → generic
+  `CompareView` reuse with the baked before/after + overlay + stats. Single OSCD model (no dropdown).
+  Plain **"Sentinel-2 · 10 m/px"** labelling + honesty ribbon + per-pair dates/cloud. Aerial tab relabelled
+  "Aerial", untouched as the high-accuracy showcase. `CompareView` gained an optional `gsdLabel`; a shared
+  `.scene .meta .t` `display:block` fix clips long S2 titles.
+- **Deploy (2026-07-10):** OSCD bundle → public Model repo `GeospatiaProject/geospatial-1`; `app/` (incl.
+  `data/sentinel2/`, excl. `backend/models/`, `requirements.txt` STAC-free) → public Space
+  `GeospatiaProject/geospatial1`. **Verified logged-out (isolated context):** both tabs load anonymously,
+  `/api/models` shows exactly the 2 aerial RGB models (no OSCD leak), all 5 S2 AOIs serve from cache with
+  imagery+overlay+stats, aerial mode unregressed. Live: `geospatiaproject-geospatial1.hf.space`.
+
+---
+
+### Historical (pre-Gate-2) status below.
 
 **Gate 1 (before first full training) — PASSED, maintainer approved.** Gate 2 unchanged (see bottom).
 
