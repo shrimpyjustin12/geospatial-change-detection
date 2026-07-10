@@ -110,7 +110,7 @@ AOIS: list[AOI] = [
         116.41,
         "T50SMJ",
         "2016-10-10",
-        "2019-11-19",
+        "2020-10-04",  # same-season (early-Oct), same-orbit (R075) after — minimal crop delta
         window=1024,
     ),
     AOI(
