@@ -18,6 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HOME=/tmp/hf \
     BUNDLES_DIR=/app/models \
     CURATED_DIR=/app/data/curated \
+    SENTINEL2_DIR=/app/data/sentinel2 \
     FRONTEND_DIST=/app/frontend_dist
 
 COPY backend/requirements.txt ./requirements.txt
