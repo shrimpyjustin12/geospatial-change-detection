@@ -50,6 +50,11 @@ def _maybe_pull_bundles() -> None:
 
     This is the HF-Space networking path (PRD §3/§9): the Space pulls weights from a companion
     Model repo at startup. It is a no-op locally (repo unset) and never runs on Leonardo.
+
+    The OSCD Track-B (``oscd_*``) bundle is deliberately NOT pulled: the Sentinel-2 tab is served
+    entirely from the baked cache (no runtime inference), and the 4-band OSCD model cannot run on
+    the 3-band RGB curated pairs — pulling it would surface it in the aerial ``/api/models``
+    dropdown and 500 on select. It still lives in the Model repo as a published portfolio artifact.
     """
     repo = os.environ.get("HF_BUNDLE_REPO", "").strip()
     if not repo or (BUNDLES_DIR.exists() and any(BUNDLES_DIR.iterdir())):
@@ -58,7 +63,12 @@ def _maybe_pull_bundles() -> None:
         from huggingface_hub import snapshot_download
 
         BUNDLES_DIR.mkdir(parents=True, exist_ok=True)
-        snapshot_download(repo_id=repo, repo_type="model", local_dir=str(BUNDLES_DIR))
+        snapshot_download(
+            repo_id=repo,
+            repo_type="model",
+            local_dir=str(BUNDLES_DIR),
+            ignore_patterns=["oscd_*", "oscd_*/*"],  # Track-B artifact only; not served at runtime
+        )
     except Exception as exc:  # noqa: BLE001 — startup pull is best-effort; app still serves UI
         print(f"[startup] bundle pull from {repo!r} failed: {exc}")
 
