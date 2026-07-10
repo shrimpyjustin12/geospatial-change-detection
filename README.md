@@ -4,22 +4,31 @@ Given two images of the same place at two times, produce a map of **what changed
 serve it through an interactive web demo. This is a portfolio project: the **evaluation
 harness and reproducibility are first-class deliverables**, not afterthoughts.
 
-> **Status:** M3 complete — a **DINOv2-base + LoRA** foundation-model tier reaches LEVIR-CD test
-> **F1 0.913 / IoU 0.839** with only **2.82M trainable params**, matching (to slightly beating) the
-> 24.7M-param Siamese-SegFormer (F1 0.911). The defensible headline is **parameter efficiency**:
-> foundation-model pretraining delivers specialist-level accuracy at **~9× fewer trainable
-> parameters** — 0.913 vs 0.911 is within noise, so this is parity-plus-efficiency, not a decisive
-> accuracy win. Full four-tier comparison through the identical harness — PR-curve threshold
-> selection, per-scene breakdown, auto-generated failure gallery, and fusion + adaptation ablations.
-> See [Results](#results--levir-cd-track-a) and [milestones](#milestones).
-> Next: M4 (ONNX export + curated HF Space).
+> **Status: delivered (M0–M5 complete).** 🛰️ **Live demo:**
+> **<https://geospatiaproject-geospatial1.hf.space>** — a single Hugging Face Docker Space serving
+> two curated tracks with CPU `onnxruntime`.
+>
+> The **Aerial** track's headline is a **DINOv2-base + LoRA** foundation-model tier reaching LEVIR-CD
+> test **F1 0.913 / IoU 0.839** with only **2.82M trainable params**, matching (to slightly beating)
+> the 24.7M-param Siamese-SegFormer (F1 0.911) — the defensible claim is **parameter efficiency**
+> (~9× fewer trainable params), not a decisive accuracy win. Full four-tier comparison through one
+> harness — PR-curve threshold selection, per-scene breakdown, auto-generated failure gallery, and
+> fusion + adaptation ablations. The **Sentinel-2** track adds a genuinely 10 m-native OSCD model over
+> five real-world change sites, framed honestly as directionally-correct-not-fine-grained. See
+> [Aerial results](#results--levir-cd-track-a), [Sentinel-2 results](#results--sentinel-2-track-b),
+> and [milestones](#milestones). The disaster **xBD** track (M6) was scoped but is **out of scope /
+> not built**.
 
 ## Two imagery tracks (they must not be mixed)
 
-- **Track A — high-res aerial (0.5 m RGB):** LEVIR-CD (binary building change) + xBD (disaster
-  damage, multi-class). Powers the curated demo.
-- **Track B — Sentinel-2 (10 m multispectral):** OSCD. Powers the **live AOI** demo, which pulls
-  fresh Sentinel-2 scenes at inference.
+- **Track A — high-res aerial (0.5 m RGB):** LEVIR-CD (binary building change). Powers the **Aerial**
+  curated tab — the high-accuracy showcase. *(xBD disaster damage was planned for M6 — out of scope.)*
+- **Track B — Sentinel-2 (10 m multispectral):** OSCD. Powers the **Sentinel-2** curated tab — a
+  Sentinel-2-native model over five real-world change sites, predictions **precomputed at build time**
+  from Planetary Computer scenes and served from cache (no runtime inference, STAC, or GPU).
+
+A model trained on 0.5 m aerial imagery does **not** transfer to 10 m Sentinel-2, so the two tracks
+use separate models; see the [domain-gap note](#why-the-split-matters) below.
 
 ## Results — LEVIR-CD (Track A)
 
@@ -108,27 +117,77 @@ identical pattern. Foundation-model pretraining does **not** solve this failure 
 Reproduce the full comparison with `python -m src.compare --manifest configs/compare_levircd.yaml`
 (per-model artifacts via `python -m src.evaluate --config configs/levircd_dinov2.yaml --split test`).
 
-**Why the split matters (domain gap):** a model trained on 0.5 m aerial imagery does **not**
-transfer to 10 m Sentinel-2 — resolution and spectral characteristics differ by more than an
-order of magnitude. Running the LEVIR-CD model on live Sentinel-2 would produce meaningless
-output. The live mode therefore uses a Sentinel-2-native model trained on OSCD. This is a
-documented design decision, not a footnote.
+### Why the split matters
+
+A model trained on 0.5 m aerial imagery does **not** transfer to 10 m Sentinel-2 — resolution and
+spectral characteristics differ by more than an order of magnitude. Running the LEVIR-CD model on
+Sentinel-2 would produce meaningless output. The Sentinel-2 tab therefore uses a **Sentinel-2-native
+model trained on OSCD**. This is a documented design decision, not a footnote.
+
+## Results — Sentinel-2 (Track B)
+
+The **Sentinel-2** tab is powered by a compact 4-band (**RGB + NIR** = S2 B04/B03/B02/B08) Siamese
+model trained on **OSCD** (Onera Satellite Change Detection — 24 Sentinel-2 pairs). OSCD is tiny and
+genuinely hard, so scores are **modest by design** and framed that way in the UI and the model card.
+
+| Model | Trainable params | F1 | IoU | Precision | Recall |
+|---|---|---|---|---|---|
+| **FC-Siam-diff, 4-band (from scratch)** — demo model | 0.83M | **0.453** | 0.293 | 0.492 | 0.420 |
+| Siamese-SegFormer MiT-b0, 4-band (ImageNet-pretrained) | — | 0.413 | — | — | — |
+
+Threshold selected on val (max-F1) → applied to test (0.469); per-scene F1 **0.378 ± 0.175** (n=10);
+overall pixel accuracy deliberately not reported. **ImageNet pretraining transfers poorly to 10 m
+multispectral** — the from-scratch baseline wins, so it is the deployed demo model. This is the
+opposite of the Track-A story (where pretraining helped), and that contrast is itself a finding.
+
+**Honest framing (kept prominent in the app):** Sentinel-2 is a coarse 10 m domain and this model is
+**directionally correct on large real-world change, not a fine-grained detector**. The high-resolution
+aerial LEVIR-CD track is the high-accuracy showcase; the Sentinel-2 track exists to run on any
+real-world location, plainly caveated.
+
+### Live demo — curated Sentinel-2
+
+Five real-world sites with large, obvious change visible even at 10 m. For each, a low-cloud
+before/after Sentinel-2 L2A pair is fetched from **Planetary Computer at build time**, co-registered
+(each pair shares one MGRS tile → identical UTM grid), run through the OSCD ONNX model **offline**, and
+baked (before/after/overlay PNGs + stats) into a cache the Space serves instantly — **no runtime
+inference, STAC, or GPU**.
+
+| Site | Tile | Before → After | Detected change |
+|---|---|---|---|
+| Dubai — Deira Islands reclamation | T40RCP | 2016-03-20 → 2023-04-28 | 13.2% |
+| Grand Ethiopian Renaissance Dam — reservoir filling | T36PYT | 2020-02-14 → 2023-12-25 | 8.3% |
+| Beijing Daxing International Airport | T50SMJ | 2016-10-10 → 2020-10-04 | 34.6% |
+| Bhadla Solar Park, Rajasthan | T42RYR | 2017-12-17 → 2021-12-16 | 4.3% |
+| New Administrative Capital, Egypt | T36RUU | 2016-08-27 → 2023-08-26 | 20.4% |
+
+Before/after acquisitions are matched by **relative orbit and season** where it matters (e.g. Beijing's
+after-scene is same-orbit, same-early-October as the before) to suppress crop-phenology change and
+isolate the real built change.
+
+**Reproduce (Track B):** stage OSCD on the Leonardo login node (`scripts/stage_data.sh oscd`), train
+single-GPU (`python -m src.train --config configs/oscd_s2.yaml`), export the 4-band bundle
+(`python -m src.export --config configs/oscd_s2.yaml --checkpoint <best.pt> --out-dir bundles`), then
+bake the AOIs offline (`python app/backend/build_sentinel2.py`, which needs the build-time STAC deps
+`pystac-client` / `planetary-computer` / `rasterio`).
 
 ## Architecture
 
 ```
- LEONARDO HPC (trains)                          HUGGING FACE (serves)
- login: stage data + FM weights (egress)        FastAPI + onnxruntime (CPU) :7860
-   -> $SCRATCH/$WORK data                          |- /curated : Track-A ONNX, before/after
-   -> SLURM (Singularity, GPU) -> checkpoints      |- /live-aoi: STAC -> Sentinel-2 ->
-   -> evaluate.py -> results/ (metrics, PR,        |             Track-B ONNX -> overlay
-      failure gallery)                           React + MapLibre (swipe slider, AOI draw)
-   -> export.py -> artifact bundle  --push-->  HF Model repo --pull--> Space
+ LEONARDO HPC (trains)                    BUILD-TIME (local)              HUGGING FACE (serves)
+ login: stage data + weights (egress)     Planetary Computer STAC:        FastAPI + onnxruntime :7860
+   -> $WORK data                            fetch S2 L2A pairs            |- Aerial     : Track-A ONNX
+   -> SLURM (GPU) -> checkpoints            -> OSCD ONNX offline          |              (cache-served)
+   -> evaluate.py -> results/               -> bake before/after/         |- Sentinel-2 : baked cache
+      (metrics, PR, failure gallery)           overlay + stats           |              (no runtime STAC)
+   -> export.py -> artifact bundle  --push--> HF Model repo --pull--> Space (React + MapLibre, swipe)
 ```
 
-The **artifact bundle** is the contract between the two surfaces: per model, a directory with
-`model.onnx`, `config.yaml`, `preprocessing.json`, and `metrics_card.md`. The demo consumes
-only the bundle — never the training code.
+Both tabs are **served from a precomputed cache** — no live inference on the free CPU tier. The
+**artifact bundle** is the contract between training and serving: per model, a directory with
+`model.onnx`, `config.yaml`, `preprocessing.json`, and `metrics_card.md`. The demo consumes only the
+bundle — never the training code. The Sentinel-2 predictions are baked once by
+`app/backend/build_sentinel2.py` (the only place STAC/rasterio run; those stay build-time-only deps).
 
 ## Repository layout
 
@@ -170,10 +229,10 @@ only local storage. Always run a **smoke config** before any full submission.
 | M1 | Baseline (FC-Siam-diff) end-to-end on HPC | ✅ done — LEVIR-CD test **F1 0.884** / IoU 0.793 |
 | M2 | Strong model (Siamese-SegFormer) + full eval harness | ✅ done — LEVIR-CD test **F1 0.911** / IoU 0.836 |
 | M3 | Foundation-model tier (DINOv2 + LoRA) + 4-tier comparison | ✅ done — LEVIR-CD test **F1 0.913** / IoU 0.839, **2.82M** trainable |
-| M4 | ONNX export + curated HF Space | todo |
-| M5 | Live Sentinel-2 AOI mode | todo |
-| M6 | Disaster xBD multi-class track | todo |
-| M7 | Polish: README, model cards, demo GIF | todo |
+| M4 | ONNX export + curated aerial HF Space | ✅ done — [live](https://geospatiaproject-geospatial1.hf.space), parity-checked bundles |
+| M5 | Curated Sentinel-2 (Track B) mode | ✅ done — live, OSCD test **F1 0.453**, 5 baked AOIs |
+| M6 | Disaster xBD multi-class track | ⛔ out of scope — not built |
+| M7 | Polish: README, model cards, limitations | ✅ folded into M0–M5 |
 
 ## License & data hygiene
 

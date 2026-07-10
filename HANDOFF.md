@@ -1,5 +1,11 @@
 # HANDOFF
 
+> **PROJECT DELIVERED (2026-07-10) — M0–M5 COMPLETE.** Both curated tracks are live on one public HF
+> Space (`geospatiaproject-geospatial1.hf.space`): Aerial (LEVIR-CD, 4-tier comparison, DINOv2+LoRA
+> headline F1 0.913) and Sentinel-2 (OSCD 10 m, 5 baked real-world AOIs). **M6 (xBD disaster track) is
+> OUT OF SCOPE / not built** (maintainer decision). M7 polish folded into M0–M5. No further milestones
+> planned. Everything below is the working record.
+
 Continuation notes for a fresh session with zero prior conversation context. Read this first;
 then **[PRD.md](PRD.md) is the authoritative build spec** and `leonardo.md` (in the repo's parent
 dir) is authoritative for all Leonardo/HPC specifics.
